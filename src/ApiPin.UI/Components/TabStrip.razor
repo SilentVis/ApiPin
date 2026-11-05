@@ -1,4 +1,5 @@
 @inject WorkspaceState State
+@inject IPlatformServices Platform
 @implements IDisposable
 
 <div class="tabstrip" role="tablist">
@@ -12,10 +13,10 @@
             {
                 <span class="tab-spinner"></span>
             }
-            <button class="tab-close" title="Close (Ctrl+W)" @onclick="() => State.Close(tab)" @onclick:stopPropagation="true">✕</button>
+            <button class="tab-close" title="Close (@(Platform.RunsInBrowser ? "Alt" : "Ctrl")+W)" @onclick="() => State.Close(tab)" @onclick:stopPropagation="true">✕</button>
         </div>
     }
-    <button class="tab-new" title="New request (Ctrl+T)" @onclick="() => State.NewTab()">+</button>
+    <button class="tab-new" title="New request (@(Platform.RunsInBrowser ? "Alt" : "Ctrl")+T)" @onclick="() => State.NewTab()">+</button>
 </div>
 
 @code {

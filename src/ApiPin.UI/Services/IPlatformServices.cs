@@ -6,6 +6,12 @@ public interface IPlatformServices
     /// <summary>False when the host has no native file dialogs (e.g. a browser host).</summary>
     bool SupportsFileDialogs { get; }
 
+    /// <summary>
+    /// True when the UI runs in a regular browser, which keeps Ctrl+T, Ctrl+W and Ctrl+Tab for itself;
+    /// the UI then advertises the Alt+T / Alt+W alternatives.
+    /// </summary>
+    bool RunsInBrowser { get; }
+
     /// <summary>Returns the chosen file's full path, or null when cancelled.</summary>
     Task<string?> PickFileAsync();
 
@@ -17,6 +23,7 @@ public interface IPlatformServices
 public sealed class BrowserPlatformServices : IPlatformServices
 {
     public bool SupportsFileDialogs => false;
+    public bool RunsInBrowser => true;
     public Task<string?> PickFileAsync() => Task.FromResult<string?>(null);
     public Task<string?> SaveFileAsync(string suggestedFileName, byte[] content) => Task.FromResult<string?>(null);
 }

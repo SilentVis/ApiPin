@@ -4,6 +4,7 @@
     <Project Path="src/ApiPin.Storage/ApiPin.Storage.csproj" />
     <Project Path="src/ApiPin.UI/ApiPin.UI.csproj" />
     <Project Path="src/ApiPin.Desktop/ApiPin.Desktop.csproj" />
+    <Project Path="src/ApiPin.Web/ApiPin.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ApiPin.Core.Tests/ApiPin.Core.Tests.csproj" />

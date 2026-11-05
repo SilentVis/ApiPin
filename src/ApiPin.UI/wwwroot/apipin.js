@@ -12,10 +12,16 @@ export function registerShortcuts(dotnet) {
             return;
         }
 
-        if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
         const key = e.key.toLowerCase();
         let action = null;
-        if (key === 'enter') action = 'send';
+
+        // Alt alternatives for browsers, which keep Ctrl+T / Ctrl+W / Ctrl+Tab for themselves.
+        if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+            if (e.code === 'KeyT') action = 'newTab';
+            else if (e.code === 'KeyW') action = 'closeTab';
+        }
+        else if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+        else if (key === 'enter') action = 'send';
         else if (key === 't' && !e.shiftKey) action = 'newTab';
         else if (key === 'w') action = 'closeTab';
         else if (key === 'tab') action = e.shiftKey ? 'prevTab' : 'nextTab';

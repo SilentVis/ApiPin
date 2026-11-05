@@ -1,0 +1,18 @@
+@page "/"
+@using Microsoft.AspNetCore.Components.Web
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <title>ApiPin</title>
+    <link rel="stylesheet" href="@Assets["_content/ApiPin.UI/apipin.css"]" />
+</head>
+<body>
+    @* Not prerendered: the UI uses JS interop on first render and keeps all state on the server. *@
+    <div id="app"><ApiPin.UI.ApiPinApp @rendermode="new InteractiveServerRenderMode(prerender: false)" /></div>
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+</body>
+</html>

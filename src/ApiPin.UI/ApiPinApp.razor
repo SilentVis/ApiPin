@@ -1,13 +1,14 @@
 @* Root component, hosted by ApiPin.Desktop (BlazorWebView) or any Blazor host. *@
 @inject WorkspaceState State
 @inject IJSRuntime JS
+@inject IPlatformServices Platform
 @implements IAsyncDisposable
 
 <div class="app">
     <header class="topbar">
         <span class="brand">ApiPin</span>
         <span class="spacer"></span>
-        <span class="muted shortcuts">Ctrl+Enter send · Ctrl+T new tab · Ctrl+W close</span>
+        <span class="muted shortcuts">@(Platform.RunsInBrowser ? "Ctrl+Enter send · Alt+T new tab · Alt+W close" : "Ctrl+Enter send · Ctrl+T new tab · Ctrl+W close")</span>
         <button class="icon-btn" title="@(_sideBySide ? "Stack request above response" : "Show request and response side by side")" @onclick="ToggleLayout">
             @(_sideBySide ? "⬒" : "◫")
         </button>

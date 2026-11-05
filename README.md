@@ -23,6 +23,8 @@ What works today:
 - **Friendly errors** for DNS failures, refused connections, TLS problems, timeouts and cancellation
 - **Tabs** are kept across restarts in `%APPDATA%\ApiPin\scratch-tabs.json`; dark/light theme follows Windows
 - **Shortcuts:** `Ctrl+Enter` send · `Ctrl+T` new tab · `Ctrl+W` close tab · `Ctrl+Tab` / `Ctrl+Shift+Tab` switch tabs
+  (in the browser version: `Alt+T` / `Alt+W`, since the browser keeps the Ctrl ones)
+- **Two hosts, same UI:** a Windows desktop app, and a browser version served from `localhost`
 
 > Open tabs, including any passwords and tokens you typed, are saved as plain text in app data.
 > Encrypted secret storage (DPAPI) comes with environments in Phase 4.
@@ -42,6 +44,7 @@ without touching the engine or the host.
 | `src/ApiPin.Storage` | JSON persistence (open tabs today; workspaces later) |
 | `src/ApiPin.UI` | Razor components, UI state, CSS and a small JS module |
 | `src/ApiPin.Desktop` | WPF window hosting the UI in a `BlazorWebView` |
+| `src/ApiPin.Web` | Blazor Server host: the same UI in any browser, served from `localhost` |
 | `tests/*` | Unit tests, plus integration tests against an in-process Kestrel server |
 | `tools/ApiPin.EchoServer` | Answers any request with a JSON description of it, for manual testing |
 
@@ -62,6 +65,32 @@ Run the app:
 ```bash
 dotnet run --project src/ApiPin.Desktop
 ```
+
+Or run it in a browser, then open <http://localhost:5100>:
+
+```bash
+dotnet run --project src/ApiPin.Web
+```
+
+### Browser version
+
+`ApiPin.Web` is Blazor Server: the C# runs in the server process, which also sends your requests, and the
+browser only shows the UI. So, unlike a pure web app, it isn't limited by CORS or forbidden headers.
+Differences from the desktop app:
+
+- **File paths** for multipart and binary bodies are typed in and refer to the server's disk;
+  **Save…** downloads through the browser
+- **Windows auth** runs as the user running the server
+- **One shared set of tabs** for every browser window, saved to `%APPDATA%\ApiPin\scratch-tabs-web.json`
+  (separate from the desktop app's file, so both can run at once)
+- **Shortcuts** use `Alt+T` / `Alt+W` for tabs
+
+It listens on `localhost:5100` only. Change it with `--urls`, for example
+`dotnet run --project src/ApiPin.Web -- --urls http://localhost:6000`.
+Don't bind it to a network address without putting authentication in front: anyone who can reach it
+can make this machine send HTTP requests on their behalf.
+
+### Echo server
 
 Run the echo server to try requests against (default port 5080):
 

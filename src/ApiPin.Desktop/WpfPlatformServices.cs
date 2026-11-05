@@ -8,6 +8,7 @@ namespace ApiPin.Desktop;
 internal sealed class WpfPlatformServices : IPlatformServices
 {
     public bool SupportsFileDialogs => true;
+    public bool RunsInBrowser => false;
 
     public Task<string?> PickFileAsync() => OnUiThread(() =>
     {
