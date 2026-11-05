@@ -1,4 +1,5 @@
-# Renders the ApiPin mark (same shapes as src/ApiPin.UI/wwwroot/icon.svg) into a multi-size .ico
+# Renders the ApiPin mark (pin between braces on a dark tile; same shapes as
+# src/ApiPin.UI/wwwroot/icon.svg) into a multi-size .ico
 # for the desktop app. Each size is drawn from the vector shapes, so small sizes stay crisp.
 #
 #   pwsh tools/icon/make-icon.ps1 [-Output path.ico] [-PreviewDir folder]
@@ -11,40 +12,107 @@ param(
 Add-Type -AssemblyName System.Drawing
 $ErrorActionPreference = 'Stop'
 
+function Color([string]$hex) { [System.Drawing.ColorTranslator]::FromHtml($hex) }
+
+function RoundedRect([float]$x, [float]$y, [float]$w, [float]$h, [float]$r) {
+    $d = $r * 2
+    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $path.AddArc($x, $y, $d, $d, 180, 90)
+    $path.AddArc($x + $w - $d, $y, $d, $d, 270, 90)
+    $path.AddArc($x + $w - $d, $y + $h - $d, $d, $d, 0, 90)
+    $path.AddArc($x, $y + $h - $d, $d, $d, 90, 90)
+    $path.CloseFigure()
+    return $path
+}
+
+function Gradient([float]$y1, [float]$y2, [string]$from, [string]$to) {
+    New-Object System.Drawing.Drawing2D.LinearGradientBrush ([System.Drawing.PointF]::new(0, $y1)), ([System.Drawing.PointF]::new(0, $y2)), (Color $from), (Color $to)
+}
+
+function Polygon([float[]]$xy) {
+    $points = for ($i = 0; $i -lt $xy.Length; $i += 2) { [System.Drawing.PointF]::new($xy[$i], $xy[$i + 1]) }
+    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $path.AddPolygon([System.Drawing.PointF[]]$points)
+    return $path
+}
+
+# Adds an SVG quadratic segment (P0 -> control Q -> P2) as the equivalent cubic Bezier.
+function AddQuad($path, [float]$x0, [float]$y0, [float]$qx, [float]$qy, [float]$x2, [float]$y2) {
+    $path.AddBezier($x0, $y0,
+        ($x0 + 2 / 3 * ($qx - $x0)), ($y0 + 2 / 3 * ($qy - $y0)),
+        ($x2 + 2 / 3 * ($qx - $x2)), ($y2 + 2 / 3 * ($qy - $y2)),
+        $x2, $y2)
+}
+
+# One curly brace: open end at x $tip, spine at x $spine, point at x $point.
+# Left brace: Brace 88 66 48 ==
+#   M88 64 Q66 64 66 90 L66 110 Q66 128 48 128 Q66 128 66 146 L66 166 Q66 192 88 192
+function Brace([float]$tip, [float]$spine, [float]$point) {
+    $p = New-Object System.Drawing.Drawing2D.GraphicsPath
+    AddQuad $p $tip 64 $spine 64 $spine 90
+    $p.AddLine($spine, 90, $spine, 110)
+    AddQuad $p $spine 110 $spine 128 $point 128
+    AddQuad $p $point 128 $spine 128 $spine 146
+    $p.AddLine($spine, 146, $spine, 166)
+    AddQuad $p $spine 166 $spine 192 $tip 192
+    return $p
+}
+
 function New-Mark([int]$size) {
     $bmp = New-Object System.Drawing.Bitmap $size, $size, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode = 'AntiAlias'
     $g.PixelOffsetMode = 'HighQuality'
     $g.Clear([System.Drawing.Color]::Transparent)
+
+    # 256-unit canvas.
     $g.ScaleTransform($size / 256.0, $size / 256.0)
 
-    # Rounded square, x=8 y=8 240x240, radius 56, vertical blue gradient.
-    $r = 56; $d = $r * 2; $x = 8; $y = 8; $w = 240
-    $square = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $square.AddArc($x, $y, $d, $d, 180, 90)
-    $square.AddArc($x + $w - $d, $y, $d, $d, 270, 90)
-    $square.AddArc($x + $w - $d, $y + $w - $d, $d, $d, 0, 90)
-    $square.AddArc($x, $y + $w - $d, $d, $d, 90, 90)
-    $square.CloseFigure()
-    $top = [System.Drawing.ColorTranslator]::FromHtml('#3b82f6')
-    $bottom = [System.Drawing.ColorTranslator]::FromHtml('#1d4ed8')
-    $gradient = New-Object System.Drawing.Drawing2D.LinearGradientBrush ([System.Drawing.PointF]::new(0, 8)), ([System.Drawing.PointF]::new(0, 248)), $top, $bottom
-    $g.FillPath($gradient, $square)
+    # Tile: rect 8,8 240x240 rx 52
+    $tile = RoundedRect 8 8 240 240 52
+    $tileBrush = New-Object System.Drawing.SolidBrush (Color '#1f2329')
+    $g.FillPath($tileBrush, $tile)
 
-    # Pin: M128 218 C112 196 68 150 68 108 A60 60 0 0 1 188 108 C188 150 144 196 128 218 Z
-    $pin = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $pin.AddBezier(128, 218, 112, 196, 68, 150, 68, 108)
-    $pin.AddArc(68, 48, 120, 120, 180, 180)
-    $pin.AddBezier(188, 108, 188, 150, 144, 196, 128, 218)
-    $pin.CloseFigure()
-    $g.FillPath([System.Drawing.Brushes]::White, $pin)
+    # Braces: stroke #e5e7eb width 18, round caps/joins. Small sizes get a slightly
+    # heavier stroke so the braces don't fade into the tile.
+    $braceWidth = if ($size -le 24) { 22 } else { 18 }
+    $bracePen = New-Object System.Drawing.Pen (Color '#e5e7eb'), $braceWidth
+    $bracePen.StartCap = 'Round'; $bracePen.EndCap = 'Round'; $bracePen.LineJoin = 'Round'
+    foreach ($braces in (Brace 88 66 48), (Brace 168 190 208)) {
+        $g.DrawPath($bracePen, $braces)
+        $braces.Dispose()
+    }
 
-    # Hole: circle at 128,108 r=24.
-    $hole = New-Object System.Drawing.SolidBrush $bottom
-    $g.FillEllipse($hole, 104, 84, 48, 48)
+    # Pin, upright, between the braces (SVG: translate(128 128) scale(0.6) translate(-128 -130)).
+    $g.TranslateTransform(128, 128)
+    $g.ScaleTransform(0.6, 0.6)
+    $g.TranslateTransform(-128, -130)
 
-    $g.Dispose(); $gradient.Dispose(); $hole.Dispose(); $square.Dispose(); $pin.Dispose()
+    # Needle: M121 146 L135 146 L131 226 L128 240 L125 226 Z
+    $needle = Polygon @(121, 146, 135, 146, 131, 226, 128, 240, 125, 226)
+    $needleBrush = New-Object System.Drawing.SolidBrush (Color '#9ca3af')
+    $g.FillPath($needleBrush, $needle)
+
+    # Flange: rect 64,114 128x36 rx 18
+    $flange = RoundedRect 64 114 128 36 18
+    $flangeBrush = Gradient 114 150 '#ef4444' '#b91c1c'
+    $g.FillPath($flangeBrush, $flange)
+
+    # Neck: M98 64 L158 64 L150 120 L106 120 Z
+    $neck = Polygon @(98, 64, 158, 64, 150, 120, 106, 120)
+    $neckBrush = New-Object System.Drawing.SolidBrush (Color '#b91c1c')
+    $g.FillPath($neckBrush, $neck)
+
+    # Head: rect 74,20 108x50 rx 25
+    $head = RoundedRect 74 20 108 50 25
+    $headBrush = Gradient 20 70 '#f87171' '#dc2626'
+    $g.FillPath($headBrush, $head)
+
+    # Highlight: ellipse at 106,36 rx 18 ry 8, white at 45%
+    $shine = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(115, 255, 255, 255))
+    $g.FillEllipse($shine, 88, 28, 36, 16)
+
+    foreach ($d in $g, $tile, $tileBrush, $bracePen, $needle, $needleBrush, $flange, $flangeBrush, $neck, $neckBrush, $head, $headBrush, $shine) { $d.Dispose() }
     return $bmp
 }
 
