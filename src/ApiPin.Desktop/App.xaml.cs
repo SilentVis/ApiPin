@@ -19,7 +19,8 @@ public partial class App : Application
         services.AddBlazorWebViewDeveloperTools();
 #endif
         services.AddSingleton<IPlatformServices, WpfPlatformServices>();
-        services.AddApiPin();
+        // ApiPin.exe [workspace-folder] opens that workspace instead of the last one.
+        services.AddApiPin(startupWorkspace: e.Args.FirstOrDefault());
         _services = services.BuildServiceProvider();
 
         new MainWindow(_services).Show();

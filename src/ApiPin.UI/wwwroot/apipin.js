@@ -22,6 +22,7 @@ export function registerShortcuts(dotnet) {
         }
         else if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
         else if (key === 'enter') action = 'send';
+        else if (key === 's') action = e.shiftKey ? 'saveAs' : 'save';
         else if (key === 't' && !e.shiftKey) action = 'newTab';
         else if (key === 'w') action = 'closeTab';
         else if (key === 'tab') action = e.shiftKey ? 'prevTab' : 'nextTab';

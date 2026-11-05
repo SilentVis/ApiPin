@@ -9,6 +9,12 @@ public sealed class RequestTab(RequestDefinition request)
     public bool IsSending { get; internal set; }
     internal CancellationTokenSource? Sending { get; set; }
 
+    /// <summary>JSON of the saved request this tab edits, or null for an unsaved (scratch) tab.</summary>
+    internal string? SavedJson { get; set; }
+
+    /// <summary>True when the tab has edits that are not saved to its collection yet.</summary>
+    public bool IsModified { get; internal set; }
+
     public string RequestSection { get; set; } = "params";
     public string ResponseSection { get; set; } = "body";
 

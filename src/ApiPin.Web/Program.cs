@@ -21,7 +21,10 @@ builder.WebHost.UseStaticWebAssets();
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 
 // A separate file from the desktop app, so both can run at once without overwriting each other's tabs.
-builder.Services.AddApiPin(Path.Combine(Path.GetDirectoryName(ScratchTabStore.DefaultPath)!, "scratch-tabs-web.json"));
+// --workspace <folder> opens that workspace instead of the last one.
+builder.Services.AddApiPin(
+    Path.Combine(Path.GetDirectoryName(ScratchTabStore.DefaultPath)!, "scratch-tabs-web.json"),
+    builder.Configuration["workspace"]);
 
 var app = builder.Build();
 

@@ -1,9 +1,31 @@
 @inject WorkspaceState State
+@inject UiActions Actions
 
 <div class="request-editor">
     <div class="name-row">
+        @if (State.Find(Request.Id) is { } location)
+        {
+            <span class="breadcrumb" title="Saved in @string.Join(" / ", location.Path.Select(f => f.Name))">
+                @foreach (var folder in location.Path)
+                {
+                    <span>@folder.Name</span><span class="sep">/</span>
+                }
+            </span>
+        }
+        else
+        {
+            <span class="badge muted-badge" title="This tab isn't saved in a collection. Press Ctrl+S to save it.">Unsaved</span>
+        }
         <input class="name-input" value="@Request.Name" placeholder="@Tab.Title" spellcheck="false" title="Request name"
                @oninput="e => { Request.Name = e.Value?.ToString() ?? string.Empty; State.MarkDirty(); }" />
+        @if (Tab.IsModified)
+        {
+            <span class="modified-dot" title="Unsaved changes"></span>
+        }
+        <button class="btn ghost" title="Save (Ctrl+S)" disabled="@(State.Workspace is null || (State.IsSaved(Tab) && !Tab.IsModified))"
+                @onclick="() => Actions.SaveAsync(Tab)">Save</button>
+        <button class="btn ghost" title="Save a copy into a collection (Ctrl+Shift+S)" disabled="@(State.Workspace is null)"
+                @onclick="() => Actions.SaveAsAsync(Tab)">Save as…</button>
         <button class="btn ghost" title="Duplicate this request in a new tab" @onclick="() => State.Duplicate(Tab)">Duplicate</button>
     </div>
 

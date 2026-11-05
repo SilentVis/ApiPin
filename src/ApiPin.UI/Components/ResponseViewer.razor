@@ -1,5 +1,5 @@
 @inject WorkspaceState State
-@inject IPlatformServices Platform
+@inject UiActions Actions
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
@@ -298,16 +298,8 @@
 
     private async Task Save(ResponseResult r)
     {
-        var name = SuggestFileName(r);
-        if (Platform.SupportsFileDialogs)
-        {
-            if (await Platform.SaveFileAsync(name, r.Body) is { } path) _notice = $"Saved to {path}";
-        }
-        else
-        {
-            var module = await Module();
-            await module.InvokeVoidAsync("downloadFile", name, r.ContentType ?? "application/octet-stream", Convert.ToBase64String(r.Body));
-        }
+        if (await Actions.SaveFileAsync(SuggestFileName(r), r.ContentType ?? "application/octet-stream", r.Body) is { } path)
+            _notice = $"Saved to {path}";
     }
 
     private string SuggestFileName(ResponseResult r)

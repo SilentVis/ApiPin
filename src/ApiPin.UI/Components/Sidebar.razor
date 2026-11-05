@@ -1,0 +1,216 @@
+@* Workspace header, filter and the collections tree. *@
+@inject WorkspaceState State
+@inject UiActions Actions
+@implements IDisposable
+
+<aside class="sidebar">
+    <div class="sidebar-head">
+        <span class="workspace-name" title="@State.Workspace?.Root">@(State.Workspace?.Name ?? "No workspace")</span>
+        <span class="spacer"></span>
+        <button class="icon-btn" title="New collection" disabled="@(State.Workspace is null)" @onclick="Actions.NewCollectionAsync">＋</button>
+        <button class="icon-btn" title="Workspace" @onclick='() => ToggleMenu(WorkspaceMenu)'>⋯</button>
+        @if (_menu == WorkspaceMenu)
+        {
+            @Menu(
+                ("Open or create workspace folder…", () => Actions.OpenWorkspaceAsync()),
+                ("Reload from disk", () => { State.Reload(); return Task.CompletedTask; }))
+        }
+    </div>
+
+    @if (State.Error is { } error)
+    {
+        <div class="banner error">
+            <span>@error</span>
+            <button class="icon-btn" title="Dismiss" @onclick="State.DismissError">✕</button>
+        </div>
+    }
+
+    @if (State.Workspace is { } workspace)
+    {
+        <input class="sidebar-filter" type="search" placeholder="Filter requests" value="@_filter" @oninput="e => _filter = e.Value?.ToString() ?? string.Empty" />
+
+        @if (workspace.Problems.Count > 0)
+        {
+            <div class="banner warn" title="@string.Join(Environment.NewLine, workspace.Problems.Select(p => $"{p.Path}: {p.Message}"))">
+                @workspace.Problems.Count file@(workspace.Problems.Count == 1 ? "" : "s") skipped (hover for details)
+            </div>
+        }
+
+        <div class="tree" role="tree">
+            @if (workspace.Collections.Count == 0)
+            {
+                <div class="tree-empty">
+                    <p class="hint">No collections yet.</p>
+                    <button class="btn" @onclick="Actions.NewCollectionAsync">New collection</button>
+                    <p class="hint">Or press <kbd>Ctrl</kbd> + <kbd>S</kbd> in a tab to save it into a new one.</p>
+                </div>
+            }
+            @foreach (var collection in workspace.OrderedCollections.Where(Visible))
+            {
+                @FolderNode(collection, 0)
+            }
+            @if (Filtering && !workspace.Collections.Any(Visible))
+            {
+                <p class="hint tree-empty">No requests match '@_filter'.</p>
+            }
+        </div>
+
+        <div class="sidebar-foot muted" title="@workspace.Root">@workspace.Root</div>
+    }
+</aside>
+
+@if (_menu is not null)
+{
+    <div class="menu-backdrop" @onclick="() => _menu = null"></div>
+}
+
+@code {
+    private static readonly Guid WorkspaceMenu = Guid.Empty;
+
+    private readonly HashSet<Guid> _expanded = [];
+    private Guid? _menu;
+    private string _filter = "";
+
+    private bool Filtering => _filter.Trim().Length > 0;
+
+    protected override void OnInitialized() => State.Changed += OnStateChanged;
+
+    public void Dispose() => State.Changed -= OnStateChanged;
+
+    private void OnStateChanged()
+    {
+        // Reveal the active saved request in the tree.
+        if (State.Find(State.Active.Request.Id) is { } location)
+            foreach (var folder in location.Path) _expanded.Add(folder.Id);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void ToggleMenu(Guid id) => _menu = _menu == id ? null : id;
+
+    private bool Matches(RequestDefinition r) =>
+        !Filtering ||
+        r.Name.Contains(_filter.Trim(), StringComparison.OrdinalIgnoreCase) ||
+        r.Url.Contains(_filter.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private bool Visible(RequestFolder folder) =>
+        !Filtering || folder.Name.Contains(_filter.Trim(), StringComparison.OrdinalIgnoreCase) || folder.AllRequests().Any(Matches);
+
+    private bool IsExpanded(RequestFolder folder) => Filtering || _expanded.Contains(folder.Id);
+
+    private void Toggle(RequestFolder folder)
+    {
+        if (!_expanded.Remove(folder.Id)) _expanded.Add(folder.Id);
+    }
+
+    private async Task Run(Func<Task> action)
+    {
+        _menu = null;
+        await action();
+    }
+
+    private async Task NewFolder(RequestFolder parent)
+    {
+        _menu = null;
+        if (await Actions.NewFolderAsync(parent) is { } folder)
+        {
+            _expanded.Add(parent.Id);
+            _expanded.Add(folder.Id);
+        }
+    }
+
+    private void NewRequest(RequestFolder parent)
+    {
+        _menu = null;
+        _expanded.Add(parent.Id);
+        State.CreateRequest(parent);
+    }
+
+    private RenderFragment Menu(params (string Label, Func<Task> Action)[] items) => __builder =>
+    {
+        <div class="menu" role="menu">
+            @foreach (var (label, action) in items)
+            {
+                <button class="menu-item @(label.StartsWith("Delete") ? "danger" : null)" role="menuitem" @onclick="() => Run(action)">@label</button>
+            }
+        </div>
+    };
+
+    private RenderFragment FolderNode(RequestFolder folder, int depth) => __builder =>
+    {
+        var expanded = IsExpanded(folder);
+        var isCollection = folder is RequestCollection;
+        <div class="tree-row @(isCollection ? "collection" : "folder")" style="--depth:@depth" role="treeitem" aria-expanded="@(expanded ? "true" : "false")"
+             @onclick="() => Toggle(folder)" title="@folder.Name">
+            <span class="chevron @(expanded ? "open" : null)">▸</span>
+            <span class="node-icon">@(isCollection ? "▤" : "▭")</span>
+            <span class="node-name">@folder.Name</span>
+            <button class="icon-btn row-action" title="More" @onclick="() => ToggleMenu(folder.Id)" @onclick:stopPropagation="true">⋯</button>
+            @if (_menu == folder.Id)
+            {
+                <div @onclick:stopPropagation="true">
+                    @if (folder is RequestCollection collection)
+                    {
+                        @Menu(
+                            ("New request", () => { NewRequest(folder); return Task.CompletedTask; }),
+                            ("New folder", () => NewFolder(folder)),
+                            ("Rename…", () => Actions.RenameAsync(folder)),
+                            ("Export as Postman v2.1…", () => Actions.ExportPostmanAsync(collection)),
+                            ("Delete…", () => Actions.DeleteAsync(folder)))
+                    }
+                    else
+                    {
+                        @Menu(
+                            ("New request", () => { NewRequest(folder); return Task.CompletedTask; }),
+                            ("New folder", () => NewFolder(folder)),
+                            ("Rename…", () => Actions.RenameAsync(folder)),
+                            ("Delete…", () => Actions.DeleteAsync(folder)))
+                    }
+                </div>
+            }
+        </div>
+
+        @if (expanded)
+        {
+            @foreach (var sub in folder.OrderedFolders.Where(Visible))
+            {
+                @FolderNode(sub, depth + 1)
+            }
+            @foreach (var request in folder.OrderedRequests.Where(Matches))
+            {
+                @RequestNode(request, depth + 1)
+            }
+            @if (!Filtering && folder.Folders.Count == 0 && folder.Requests.Count == 0)
+            {
+                <div class="tree-row empty" style="--depth:@(depth + 1)">
+                    <button class="link-btn" @onclick="() => NewRequest(folder)">Add a request</button>
+                </div>
+            }
+        }
+    };
+
+    private RenderFragment RequestNode(RequestDefinition request, int depth) => __builder =>
+    {
+        var tab = State.Tabs.FirstOrDefault(t => t.Request.Id == request.Id);
+        var active = ReferenceEquals(tab, State.Active);
+        <div class="tree-row request @(active ? "active" : null)" style="--depth:@depth" role="treeitem" title="@request.Url"
+             @onclick="() => State.Open(request)">
+            <span class="method-badge @Display.MethodClass(request.Method)">@Display.ShortMethod(request.Method)</span>
+            <span class="node-name">@(string.IsNullOrWhiteSpace(request.Name) ? request.Url : request.Name)</span>
+            @if (tab?.IsModified == true)
+            {
+                <span class="modified-dot" title="Unsaved changes"></span>
+            }
+            <button class="icon-btn row-action" title="More" @onclick="() => ToggleMenu(request.Id)" @onclick:stopPropagation="true">⋯</button>
+            @if (_menu == request.Id)
+            {
+                <div @onclick:stopPropagation="true">
+                    @Menu(
+                        ("Open", () => { State.Open(request); return Task.CompletedTask; }),
+                        ("Rename…", () => Actions.RenameAsync(request)),
+                        ("Duplicate", () => { State.DuplicateSaved(request); return Task.CompletedTask; }),
+                        ("Delete…", () => Actions.DeleteAsync(request)))
+                </div>
+            }
+        </div>
+    };
+}

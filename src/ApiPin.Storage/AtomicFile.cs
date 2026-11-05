@@ -10,4 +10,12 @@ internal static class AtomicFile
         await File.WriteAllTextAsync(temp, contents, ct).ConfigureAwait(false);
         File.Move(temp, path, overwrite: true);
     }
+
+    public static void WriteAllText(string path, string contents)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        var temp = path + ".tmp";
+        File.WriteAllText(temp, contents);
+        File.Move(temp, path, overwrite: true);
+    }
 }

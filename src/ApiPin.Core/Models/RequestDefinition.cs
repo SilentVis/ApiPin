@@ -25,10 +25,14 @@ public sealed class RequestDefinition
     public BodyConfig Body { get; set; } = new NoBody();
     public RequestSettings Settings { get; set; } = new();
 
+    /// <summary>Order inside its folder when saved in a collection.</summary>
+    public int Seq { get; set; }
+
     public RequestDefinition Clone(bool newId = true) => new()
     {
         Id = newId ? Guid.NewGuid() : Id,
         Name = Name,
+        Seq = Seq,
         Method = Method,
         Url = Url,
         QueryParams = QueryParams.ConvertAll(p => p.Clone()),

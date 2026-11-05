@@ -7,8 +7,9 @@ A lightweight, local-first alternative to Postman for building and sending HTTP 
 
 ## Status
 
-**v0.1 — key features.** Request tabs, the request editor and the response viewer work end to end.
-Collections and environments (Phases 3–4) and OAuth 2.0 (Phase 5) are next.
+**v0.2 — key features plus collections.** Request tabs, the request editor and the response viewer work end to end,
+and requests can be saved into collections on disk and exported for Postman.
+Environments (Phase 4) and OAuth 2.0 (Phase 5) are next.
 See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the architecture and roadmap.
 
 What works today:
@@ -21,8 +22,12 @@ What works today:
 - **Response:** status, time, size; body as Pretty (syntax-highlighted), Raw or Preview (HTML, images), with search,
   copy and save; headers, cookies, timings, and the request as actually sent
 - **Friendly errors** for DNS failures, refused connections, TLS problems, timeouts and cancellation
+- **Collections:** save requests (`Ctrl+S`, `Ctrl+Shift+S` for Save as) into collections and folders; open, rename,
+  duplicate and delete them from the sidebar; filter by name or URL; unsaved changes are marked and you're asked before closing
+- **Postman export:** any collection to Postman Collection v2.1 (`<name>.postman_collection.json`), which Postman,
+  Insomnia and Bruno can import
 - **Tabs** are kept across restarts in `%APPDATA%\ApiPin\scratch-tabs.json`; dark/light theme follows Windows
-- **Shortcuts:** `Ctrl+Enter` send · `Ctrl+T` new tab · `Ctrl+W` close tab · `Ctrl+Tab` / `Ctrl+Shift+Tab` switch tabs
+- **Shortcuts:** `Ctrl+Enter` send · `Ctrl+S` save · `Ctrl+T` new tab · `Ctrl+W` close tab · `Ctrl+Tab` / `Ctrl+Shift+Tab` switch tabs
   (in the browser version: `Alt+T` / `Alt+W`, since the browser keeps the Ctrl ones)
 - **Two hosts, same UI:** a Windows desktop app, and a browser version served from `localhost`
 
@@ -41,7 +46,7 @@ without touching the engine or the host.
 | Project | What it is |
 |---|---|
 | `src/ApiPin.Core` | UI-free engine: request model, URL tools, request builder, auth, executor, body formatting |
-| `src/ApiPin.Storage` | JSON persistence (open tabs today; workspaces later) |
+| `src/ApiPin.Storage` | JSON persistence: workspaces and collections on disk, open tabs, app settings, Postman export |
 | `src/ApiPin.UI` | Razor components, UI state, CSS and a small JS module |
 | `src/ApiPin.Desktop` | WPF window hosting the UI in a `BlazorWebView` |
 | `src/ApiPin.Web` | Blazor Server host: the same UI in any browser, served from `localhost` |
@@ -71,6 +76,45 @@ Or run it in a browser, then open <http://localhost:5100>:
 ```bash
 dotnet run --project src/ApiPin.Web
 ```
+
+### Workspaces and collections
+
+Saved requests live in a **workspace folder**, by default `Documents\ApiPin`. Use the sidebar's `⋯` menu to open or
+create another one, for example a folder inside your API's repository so the requests are versioned with the code.
+You can also open one at startup:
+
+```bash
+dotnet run --project src/ApiPin.Desktop -- D:\repos\orders-api\api-tests
+```
+
+```bash
+dotnet run --project src/ApiPin.Web -- --workspace D:\repos\orders-api\api-tests
+```
+
+The layout is plain JSON with readable names, so it diffs and merges well in Git:
+
+```
+api-tests/
+├─ apipin.workspace.json
+└─ collections/
+   └─ orders-api/
+      ├─ collection.json
+      ├─ list-orders.req.json
+      └─ auth/
+         ├─ folder.json
+         └─ log-in.req.json
+```
+
+File and folder names follow the display names (renaming in ApiPin renames them on disk), while ids inside the files
+keep links stable. Files ApiPin can't read are skipped and listed in the sidebar rather than breaking the workspace.
+After a `git pull`, use **Reload from disk** in the sidebar menu.
+
+Export a collection with **⋯ → Export as Postman v2.1…**. Per-request timeout and HTTP version have no Postman
+equivalent and are left out; a Bearer token with a custom prefix is exported as an `Authorization` header;
+Windows auth becomes NTLM (with blank credentials when it used the current user).
+
+> Saved requests store auth values (passwords, tokens) as written. Don't commit real secrets until
+> environments with encrypted secret variables arrive (Phase 4); until then, prefer dev-only credentials.
 
 ### Browser version
 

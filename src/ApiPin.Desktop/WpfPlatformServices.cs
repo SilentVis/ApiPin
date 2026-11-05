@@ -25,6 +25,12 @@ internal sealed class WpfPlatformServices : IPlatformServices
         return dialog.FileName;
     });
 
+    public Task<string?> PickFolderAsync() => OnUiThread(() =>
+    {
+        var dialog = new OpenFolderDialog { Title = "Open or create a workspace folder" };
+        return dialog.ShowDialog(Application.Current.MainWindow) == true ? dialog.FolderName : null;
+    });
+
     private static Task<string?> OnUiThread(Func<string?> action) =>
         Application.Current.Dispatcher.InvokeAsync(action).Task;
 }

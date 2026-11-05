@@ -17,6 +17,9 @@ public interface IPlatformServices
 
     /// <summary>Asks where to save and writes the file. Returns the path, or null when cancelled.</summary>
     Task<string?> SaveFileAsync(string suggestedFileName, byte[] content);
+
+    /// <summary>Returns the chosen folder's full path, or null when cancelled.</summary>
+    Task<string?> PickFolderAsync();
 }
 
 /// <summary>Fallback for hosts without native dialogs; the UI then downloads files through the browser.</summary>
@@ -26,4 +29,5 @@ public sealed class BrowserPlatformServices : IPlatformServices
     public bool RunsInBrowser => true;
     public Task<string?> PickFileAsync() => Task.FromResult<string?>(null);
     public Task<string?> SaveFileAsync(string suggestedFileName, byte[] content) => Task.FromResult<string?>(null);
+    public Task<string?> PickFolderAsync() => Task.FromResult<string?>(null);
 }

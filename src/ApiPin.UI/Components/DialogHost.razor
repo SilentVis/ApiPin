@@ -1,0 +1,103 @@
+@inject DialogService Dialogs
+@implements IDisposable
+
+@if (Dialogs.Current is { } d)
+{
+    <div class="modal-backdrop" @onclick="() => Dialogs.Complete(null)">
+        <div class="modal" role="dialog" aria-modal="true" aria-label="@d.Title" @onclick:stopPropagation="true" @onkeydown="e => OnKey(e, d)">
+            <h3>@d.Title</h3>
+
+            @switch (d.Kind)
+            {
+                case DialogKind.Confirm:
+                    <p>@d.Message</p>
+                    break;
+
+                case DialogKind.Prompt:
+                    <label class="field stacked">
+                        <span>@d.Label</span>
+                        <input value="@d.Value" spellcheck="false" @oninput="e => d.Value = e.Value?.ToString() ?? string.Empty" @ref="_first" />
+                    </label>
+                    break;
+
+                case DialogKind.SaveAs:
+                    <label class="field stacked">
+                        <span>Request name</span>
+                        <input value="@d.Value" spellcheck="false" @oninput="e => d.Value = e.Value?.ToString() ?? string.Empty" @ref="_first" />
+                    </label>
+                    <label class="field stacked">
+                        <span>Save to</span>
+                        <select value="@(d.TargetId?.ToString() ?? NewCollection)" @onchange="e => OnTargetChanged(d, e)">
+                            @foreach (var t in d.Targets)
+                            {
+                                <option value="@t.FolderId">@t.Label</option>
+                            }
+                            <option value="@NewCollection">+ New collection…</option>
+                        </select>
+                    </label>
+                    @if (d.TargetId is null)
+                    {
+                        <label class="field stacked">
+                            <span>New collection name</span>
+                            <input value="@d.NewCollectionName" placeholder="My API" spellcheck="false" @oninput="e => d.NewCollectionName = e.Value?.ToString() ?? string.Empty" />
+                        </label>
+                    }
+                    break;
+            }
+
+            <div class="modal-actions">
+                <button class="btn" @onclick="() => Dialogs.Complete(null)">Cancel</button>
+                <button class="btn @(d.Danger ? "danger" : "primary")" disabled="@(!CanSubmit(d))" @onclick="() => Submit(d)">@d.OkLabel</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const string NewCollection = "new";
+    private ElementReference _first;
+    private DialogRequest? _focused;
+
+    protected override void OnInitialized() => Dialogs.Changed += OnChanged;
+
+    public void Dispose() => Dialogs.Changed -= OnChanged;
+
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Dialogs.Current is { Kind: not DialogKind.Confirm } d && !ReferenceEquals(d, _focused))
+        {
+            _focused = d;
+            try { await _first.FocusAsync(); }
+            catch (InvalidOperationException) { }
+        }
+    }
+
+    private static void OnTargetChanged(DialogRequest d, ChangeEventArgs e) =>
+        d.TargetId = Guid.TryParse(e.Value?.ToString(), out var id) ? id : null;
+
+    private static bool CanSubmit(DialogRequest d) => d.Kind switch
+    {
+        DialogKind.Prompt => d.Value.Trim().Length > 0,
+        DialogKind.SaveAs => d.Value.Trim().Length > 0 && (d.TargetId is not null || d.NewCollectionName.Trim().Length > 0),
+        _ => true,
+    };
+
+    private void Submit(DialogRequest d)
+    {
+        if (!CanSubmit(d)) return;
+        Dialogs.Complete(d.Kind switch
+        {
+            DialogKind.Confirm => true,
+            DialogKind.SaveAs => new SaveAsResult(d.Value.Trim(), d.TargetId, d.TargetId is null ? d.NewCollectionName.Trim() : null),
+            _ => d.Value,
+        });
+    }
+
+    private void OnKey(KeyboardEventArgs e, DialogRequest d)
+    {
+        if (e.Key == "Escape") Dialogs.Complete(null);
+        else if (e.Key == "Enter") Submit(d);
+    }
+}

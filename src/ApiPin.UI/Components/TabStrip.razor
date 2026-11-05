@@ -1,5 +1,6 @@
 @inject WorkspaceState State
 @inject IPlatformServices Platform
+@inject UiActions Actions
 @implements IDisposable
 
 <div class="tabstrip" role="tablist">
@@ -13,7 +14,8 @@
             {
                 <span class="tab-spinner"></span>
             }
-            <button class="tab-close" title="Close (@(Platform.RunsInBrowser ? "Alt" : "Ctrl")+W)" @onclick="() => State.Close(tab)" @onclick:stopPropagation="true">✕</button>
+            <button class="tab-close @(tab.IsModified ? "modified" : null)" title="@(tab.IsModified ? "Unsaved changes. " : "")Close (@(Platform.RunsInBrowser ? "Alt" : "Ctrl")+W)"
+                    @onclick="() => Actions.CloseAsync(tab)" @onclick:stopPropagation="true"><span class="x">✕</span><span class="dot-mark"></span></button>
         </div>
     }
     <button class="tab-new" title="New request (@(Platform.RunsInBrowser ? "Alt" : "Ctrl")+T)" @onclick="() => State.NewTab()">+</button>
@@ -27,8 +29,8 @@
 
     private void OnStateChanged() => _ = InvokeAsync(StateHasChanged);
 
-    private void OnAuxClick(MouseEventArgs e, RequestTab tab)
+    private async Task OnAuxClick(MouseEventArgs e, RequestTab tab)
     {
-        if (e.Button == 1) State.Close(tab); // middle click
+        if (e.Button == 1) await Actions.CloseAsync(tab); // middle click
     }
 }

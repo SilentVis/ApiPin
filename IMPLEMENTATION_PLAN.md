@@ -287,15 +287,17 @@ Effort is in **focused dev-days** for one developer. Each phase ends with a usab
 
 ### Phase 3 — Workspaces and collections (≈ 7–8 days)
 
-- [ ] Open/create a workspace folder; recent workspaces list; reopen the last one on start
-- [ ] `WorkspaceStore`: load/save collections, folders and requests per §3.5; atomic writes; stable JSON formatting
-- [ ] Sidebar tree: collections → folders → requests with method badges; filter/search box
-- [ ] CRUD: new collection/folder/request, rename (inline), duplicate, delete (with confirmation), **drag-and-drop** reorder and move
-- [ ] Save (`Ctrl+S`), dirty indicator on tabs, "Save as…" into a collection; prompt on closing unsaved tabs
+- [x] Open/create a workspace folder; reopen the last one on start (recent workspaces list still to do)
+- [x] `WorkspaceStore`: load/save collections, folders and requests per §3.5; atomic writes; stable JSON formatting
+- [x] Sidebar tree: collections → folders → requests with method badges; filter/search box
+- [x] CRUD: new collection/folder/request, rename (dialog), duplicate, delete (with confirmation)
+- [ ] **Drag-and-drop** reorder and move
+- [x] Save (`Ctrl+S`), dirty indicator on tabs, "Save as…" into a collection; prompt on closing unsaved tabs
+- [x] Export a collection as Postman Collection v2.1 (import stays in Phase 6)
 - [ ] Collection- and folder-level settings: headers, auth, variables, description (markdown)
 - [ ] `InheritanceResolver`: auth `inherit` walks up to folder → collection; headers merge (request wins on conflict)
 - [ ] `FileSystemWatcher` reloads changed files and flags conflicts with open dirty tabs
-- [ ] Storage tests: round-trip, rename/move on disk, corrupted-file handling (skip and report, never crash)
+- [x] Storage tests: round-trip, rename/move on disk, corrupted-file handling (skip and report, never crash)
 
 **Exit criteria:** a collection created in ApiPin can be committed to Git, cloned on another machine and opened unchanged.
 
