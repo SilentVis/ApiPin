@@ -355,7 +355,7 @@ Effort is in **focused dev-days** for one developer. Each phase ends with a usab
 - [ ] Self-contained single-file publish for `win-x64` (and `win-arm64`); trimmed where safe
 - [ ] Velopack installer + auto-update from GitHub Releases
 - [ ] App icon, About dialog, version info, crash log with "Open logs folder"
-- [ ] Release workflow: on tag `v*` → build, test, package, publish the GitHub Release
+- [ ] Release workflow: on tag `v*` → build, test, package, publish the GitHub Release (done for a zipped self-contained `win-x64` build; installer packaging comes with Velopack)
 - [ ] Performance check: cold start < 1.5 s, idle RAM < 200 MB, a 10 MB JSON response renders without freezing
 
 **Exit criteria:** a one-click installer on a clean Windows machine, with updates delivered automatically.

@@ -53,6 +53,18 @@ without touching the engine or the host.
 | `tests/*` | Unit tests, plus integration tests against an in-process Kestrel server |
 | `tools/ApiPin.EchoServer` | Answers any request with a JSON description of it, for manual testing |
 
+## Download
+
+Get the Windows desktop app from [Releases](https://github.com/SilentVis/ApiPin/releases): unzip
+`ApiPin-<version>-win-x64.zip` and run `ApiPin\ApiPin.exe`. It's self-contained, so no .NET install is needed.
+
+Releases are built by GitHub Actions when a `v*` tag is pushed, for example:
+
+```bash
+git tag v0.2
+git push origin v0.2
+```
+
 ## Getting started
 
 Requirements: Windows 10 1809+ or Windows 11, a .NET SDK that can build `net10.0` (10.0 or later),
