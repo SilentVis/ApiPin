@@ -190,8 +190,8 @@ kbd {
     background: var(--bg-2);
     flex-shrink: 0;
 }
-.brand { font-weight: 700; letter-spacing: .2px; }
-.brand::before { content: "📌 "; }
+.brand { display: inline-flex; align-items: center; gap: 7px; font-weight: 700; letter-spacing: .2px; }
+.brand-mark { width: 18px; height: 18px; }
 .shortcuts { font-size: 12px; }
 
 .tabstrip {

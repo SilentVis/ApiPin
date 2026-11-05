@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- ApiPin mark. tools/icon/make-icon.ps1 draws the same shapes into the desktop .ico; keep them in sync. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/>
+  <path d="M128 218 C112 196 68 150 68 108 A60 60 0 0 1 188 108 C188 150 144 196 128 218 Z" fill="#fff"/>
+  <circle cx="128" cy="108" r="24" fill="#1d4ed8"/>
+</svg>

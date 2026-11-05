@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Windows;
-using System.Windows.Media;
 using ApiPin.UI.State;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -15,9 +14,7 @@ public partial class MainWindow : Window
         _services = services;
         Resources.Add("services", services);
         InitializeComponent();
-
-        // Match the page background so there is no white flash before the web view paints.
-        Background = WindowsTheme.IsDark ? new SolidColorBrush(Color.FromRgb(0x1e, 0x1f, 0x22)) : Brushes.White;
+        WindowsTheme.Attach(this);
     }
 
     protected override void OnClosing(CancelEventArgs e)
