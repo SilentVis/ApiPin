@@ -1,0 +1,31 @@
+# Normalise line endings: LF in the repo, native on checkout
+* text=auto
+
+# Windows-only files keep CRLF
+*.sln     text eol=crlf
+*.slnx    text eol=crlf
+*.bat     text eol=crlf
+*.cmd     text eol=crlf
+*.ps1     text eol=crlf
+
+# Source files
+*.cs      text diff=csharp
+*.razor   text
+*.cshtml  text diff=html
+*.xaml    text
+*.csproj  text
+*.props   text
+*.targets text
+*.json    text
+*.md      text diff=markdown
+*.sh      text eol=lf
+
+# Binary files
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.gif  binary
+*.pfx  binary
+*.dll  binary
+*.exe  binary
+*.zip  binary

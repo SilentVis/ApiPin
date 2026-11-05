@@ -1,0 +1,68 @@
+# ---- Build output ----
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]64/
+[Ll]og/
+[Ll]ogs/
+artifacts/
+publish/
+*.nupkg
+*.snupkg
+
+# ---- Visual Studio / Rider / VS Code ----
+.vs/
+.idea/
+*.user
+*.suo
+*.userprefs
+*.rsuser
+*.sln.docstates
+*.DotSettings.user
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# ---- Tests & coverage ----
+[Tt]est[Rr]esult*/
+TestResults/
+*.trx
+coverage*.json
+coverage*.xml
+coverage*.info
+*.coverage
+*.coveragexml
+
+# ---- NuGet ----
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+project.lock.json
+project.fragment.lock.json
+
+# ---- Packaging (Velopack) ----
+Releases/
+
+# ---- ApiPin local workspace state (never commit) ----
+.apipin/
+
+# ---- OS ----
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+$RECYCLE.BIN/
+
+# ---- Secrets / local config ----
+*.pfx
+*.p12
+appsettings.*.local.json
+secrets.json
+.env
+.env.*
