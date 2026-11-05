@@ -1,0 +1,204 @@
+@inject WorkspaceState State
+@inject IPlatformServices Platform
+
+<div class="body-editor">
+    <div class="radio-row">
+        @foreach (var (key, label) in Types)
+        {
+            <label class="radio">
+                <input type="radio" name="body-@Tab.Request.Id" checked="@(TypeKey(Body) == key)" @onchange="() => SwitchTo(key)" />
+                @label
+            </label>
+        }
+
+        @if (Body is RawBody raw)
+        {
+            <span class="spacer"></span>
+            <select class="compact" value="@raw.Language" @onchange="e => Set(() => raw.Language = Enum.Parse<RawLanguage>(Str(e)))">
+                @foreach (var lang in Enum.GetValues<RawLanguage>())
+                {
+                    <option value="@lang">@(lang == RawLanguage.JavaScript ? "JavaScript" : lang.ToString().ToUpperInvariant())</option>
+                }
+            </select>
+            @if (raw.Language is RawLanguage.Json or RawLanguage.Xml)
+            {
+                <button class="btn ghost" @onclick="() => Format(raw)">Format</button>
+            }
+        }
+    </div>
+
+    @if (_formatError is not null)
+    {
+        <div class="banner warn">@_formatError</div>
+    }
+
+    @switch (Body)
+    {
+        case NoBody:
+            <p class="hint">This request has no body.</p>
+            break;
+
+        case RawBody rawBody:
+            <textarea class="code-input body-text" spellcheck="false" wrap="off" value="@rawBody.Content"
+                      placeholder="@Placeholder(rawBody.Language)" @oninput="e => Set(() => rawBody.Content = Str(e))"></textarea>
+            break;
+
+        case FormUrlEncodedBody form:
+            <KeyValueGrid Items="form.Fields" OnChanged="State.MarkDirty" />
+            break;
+
+        case MultipartBody multipart:
+            <div class="kv-grid multipart">
+                <div class="kv-head"><span></span><span>Name</span><span>Type</span><span>Value</span><span>Content type</span><span></span></div>
+                @foreach (var part in multipart.Parts.Append(_ghostPart))
+                {
+                    var ghost = ReferenceEquals(part, _ghostPart);
+                    <div class="kv-row @(part.Enabled ? null : "off") @(ghost ? "ghost" : null)" @key="part">
+                        <input type="checkbox" checked="@part.Enabled" disabled="@ghost" @onchange="e => EditPart(multipart, part, p => p.Enabled = e.Value is true)" />
+                        <input value="@part.Name" placeholder="@(ghost ? "Name" : null)" spellcheck="false" @oninput="e => EditPart(multipart, part, p => p.Name = Str(e))" />
+                        <select value="@part.Kind" @onchange="e => EditPart(multipart, part, p => p.Kind = Enum.Parse<MultipartPartKind>(Str(e)))">
+                            <option value="@MultipartPartKind.Text">Text</option>
+                            <option value="@MultipartPartKind.File">File</option>
+                        </select>
+                        @if (part.Kind == MultipartPartKind.File)
+                        {
+                            <span class="file-pick">
+                                <input value="@part.Value" placeholder="C:\path\to\file" spellcheck="false" @oninput="e => EditPart(multipart, part, p => p.Value = Str(e))" />
+                                @if (Platform.SupportsFileDialogs)
+                                {
+                                    <button class="btn ghost" @onclick="() => PickPartFile(multipart, part)">Choose…</button>
+                                }
+                            </span>
+                        }
+                        else
+                        {
+                            <input value="@part.Value" placeholder="@(ghost ? "Value" : null)" spellcheck="false" @oninput="e => EditPart(multipart, part, p => p.Value = Str(e))" />
+                        }
+                        <input value="@part.ContentType" placeholder="auto" spellcheck="false"
+                               @oninput="e => EditPart(multipart, part, p => p.ContentType = Str(e) is { Length: > 0 } v ? v : null)" />
+                        @if (ghost)
+                        {
+                            <span></span>
+                        }
+                        else
+                        {
+                            <button class="icon-btn" title="Remove" @onclick="() => Set(() => multipart.Parts.Remove(part))">✕</button>
+                        }
+                    </div>
+                }
+            </div>
+            break;
+
+        case BinaryFileBody binary:
+            <label class="field">
+                <span>File</span>
+                <span class="file-pick">
+                    <input value="@binary.FilePath" placeholder="C:\path\to\file" spellcheck="false" @oninput="e => Set(() => binary.FilePath = Str(e))" />
+                    @if (Platform.SupportsFileDialogs)
+                    {
+                        <button class="btn ghost" @onclick="PickBinaryFile">Choose…</button>
+                    }
+                </span>
+            </label>
+            <label class="field">
+                <span>Content type</span>
+                <input value="@binary.ContentType" placeholder="from file extension" spellcheck="false"
+                       @oninput="e => Set(() => binary.ContentType = Str(e) is { Length: > 0 } v ? v : null)" />
+            </label>
+            break;
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public RequestTab Tab { get; set; } = null!;
+
+    private static readonly (string Key, string Label)[] Types =
+    [
+        ("none", "None"), ("raw", "Raw"), ("form", "Form URL-encoded"), ("multipart", "Multipart form"), ("binary", "Binary file"),
+    ];
+
+    private BodyConfig Body => Tab.Request.Body;
+    private MultipartPart _ghostPart = new();
+    private string? _formatError;
+
+    private static string Str(ChangeEventArgs e) => e.Value?.ToString() ?? "";
+
+    private static string TypeKey(BodyConfig body) => body switch
+    {
+        RawBody => "raw",
+        FormUrlEncodedBody => "form",
+        MultipartBody => "multipart",
+        BinaryFileBody => "binary",
+        _ => "none",
+    };
+
+    private static string Placeholder(RawLanguage language) => language switch
+    {
+        RawLanguage.Json => "{ \"name\": \"value\" }",
+        RawLanguage.Xml => "<root></root>",
+        _ => "",
+    };
+
+    private void Set(Action change)
+    {
+        change();
+        _formatError = null;
+        State.MarkDirty();
+    }
+
+    private void SwitchTo(string key)
+    {
+        Tab.BodyCache[Body.GetType()] = Body;
+        Type type = key switch
+        {
+            "raw" => typeof(RawBody),
+            "form" => typeof(FormUrlEncodedBody),
+            "multipart" => typeof(MultipartBody),
+            "binary" => typeof(BinaryFileBody),
+            _ => typeof(NoBody),
+        };
+        Tab.Request.Body = Tab.BodyCache.TryGetValue(type, out var cached) ? cached : (BodyConfig)Activator.CreateInstance(type)!;
+        _formatError = null;
+        State.MarkDirty();
+    }
+
+    private void Format(RawBody raw)
+    {
+        var pretty = raw.Language == RawLanguage.Json ? BodyFormatter.TryPrettyJson(raw.Content) : BodyFormatter.TryPrettyXml(raw.Content);
+        if (pretty is null)
+        {
+            _formatError = $"The body is not valid {raw.Language.ToString().ToUpperInvariant()}, so it was left as is.";
+            return;
+        }
+        Set(() => raw.Content = pretty);
+    }
+
+    private void EditPart(MultipartBody body, MultipartPart part, Action<MultipartPart> change)
+    {
+        change(part);
+        if (ReferenceEquals(part, _ghostPart))
+        {
+            body.Parts.Add(part);
+            _ghostPart = new();
+        }
+        State.MarkDirty();
+    }
+
+    private async Task PickPartFile(MultipartBody body, MultipartPart part)
+    {
+        if (await Platform.PickFileAsync() is { } path)
+        {
+            EditPart(body, part, p =>
+            {
+                p.Value = path;
+                if (p.Name.Length == 0) p.Name = "file";
+            });
+        }
+    }
+
+    private async Task PickBinaryFile()
+    {
+        if (Body is BinaryFileBody binary && await Platform.PickFileAsync() is { } path)
+            Set(() => binary.FilePath = path);
+    }
+}

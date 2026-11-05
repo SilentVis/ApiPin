@@ -1,0 +1,88 @@
+@* Root component, hosted by ApiPin.Desktop (BlazorWebView) or any Blazor host. *@
+@inject WorkspaceState State
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="app">
+    <header class="topbar">
+        <span class="brand">ApiPin</span>
+        <span class="spacer"></span>
+        <span class="muted shortcuts">Ctrl+Enter send · Ctrl+T new tab · Ctrl+W close</span>
+        <button class="icon-btn" title="@(_sideBySide ? "Stack request above response" : "Show request and response side by side")" @onclick="ToggleLayout">
+            @(_sideBySide ? "⬒" : "◫")
+        </button>
+    </header>
+
+    <TabStrip />
+
+    <div class="workspace @(_sideBySide ? "split-v" : "split-h")" @ref="_workspace">
+        <section class="pane">
+            <RequestEditor Tab="State.Active" @key="State.Active" />
+        </section>
+        <div class="splitter" @ref="_splitter" title="Drag to resize"></div>
+        <section class="pane">
+            <ResponseViewer Tab="State.Active" />
+        </section>
+    </div>
+</div>
+
+@code {
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<ApiPinApp>? _self;
+    private ElementReference _workspace;
+    private ElementReference _splitter;
+    private bool _sideBySide;
+
+    protected override void OnInitialized() => State.Changed += OnStateChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/ApiPin.UI/apipin.js");
+        _self = DotNetObjectReference.Create(this);
+        await _module.InvokeVoidAsync("registerShortcuts", _self);
+        await _module.InvokeVoidAsync("initSplitter", _workspace, _splitter);
+
+        _sideBySide = await _module.InvokeAsync<bool>("loadPreference", "sideBySide", false);
+        if (_sideBySide) StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnShortcut(string action)
+    {
+        switch (action)
+        {
+            case "send": await State.SendAsync(State.Active); break;
+            case "newTab": State.NewTab(); break;
+            case "closeTab": State.Close(State.Active); break;
+            case "nextTab": State.ActivateRelative(1); break;
+            case "prevTab": State.ActivateRelative(-1); break;
+        }
+    }
+
+    private async Task ToggleLayout()
+    {
+        _sideBySide = !_sideBySide;
+        if (_module is not null) await _module.InvokeVoidAsync("savePreference", "sideBySide", _sideBySide);
+    }
+
+    private void OnStateChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public async ValueTask DisposeAsync()
+    {
+        State.Changed -= OnStateChanged;
+        try
+        {
+            if (_module is not null)
+            {
+                await _module.InvokeVoidAsync("unregisterShortcuts");
+                await _module.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        _self?.Dispose();
+    }
+}

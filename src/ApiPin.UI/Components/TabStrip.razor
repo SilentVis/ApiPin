@@ -1,0 +1,33 @@
+@inject WorkspaceState State
+@implements IDisposable
+
+<div class="tabstrip" role="tablist">
+    @foreach (var tab in State.Tabs)
+    {
+        <div class="tab @(ReferenceEquals(tab, State.Active) ? "active" : null)" role="tab" title="@tab.Title" @key="tab"
+             @onclick="() => State.Activate(tab)" @onauxclick="e => OnAuxClick(e, tab)">
+            <span class="method-badge @Display.MethodClass(tab.Request.Method)">@Display.ShortMethod(tab.Request.Method)</span>
+            <span class="tab-title">@tab.Title</span>
+            @if (tab.IsSending)
+            {
+                <span class="tab-spinner"></span>
+            }
+            <button class="tab-close" title="Close (Ctrl+W)" @onclick="() => State.Close(tab)" @onclick:stopPropagation="true">✕</button>
+        </div>
+    }
+    <button class="tab-new" title="New request (Ctrl+T)" @onclick="() => State.NewTab()">+</button>
+</div>
+
+@code {
+    // Has no parameters, so a parent re-render doesn't refresh it; follow state changes directly.
+    protected override void OnInitialized() => State.Changed += OnStateChanged;
+
+    public void Dispose() => State.Changed -= OnStateChanged;
+
+    private void OnStateChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private void OnAuxClick(MouseEventArgs e, RequestTab tab)
+    {
+        if (e.Button == 1) State.Close(tab); // middle click
+    }
+}

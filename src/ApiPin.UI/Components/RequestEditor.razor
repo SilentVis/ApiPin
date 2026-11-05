@@ -1,0 +1,183 @@
+@inject WorkspaceState State
+
+<div class="request-editor">
+    <div class="name-row">
+        <input class="name-input" value="@Request.Name" placeholder="@Tab.Title" spellcheck="false" title="Request name"
+               @oninput="e => { Request.Name = e.Value?.ToString() ?? string.Empty; State.MarkDirty(); }" />
+        <button class="btn ghost" title="Duplicate this request in a new tab" @onclick="() => State.Duplicate(Tab)">Duplicate</button>
+    </div>
+
+    <div class="request-bar">
+        @if (_customMethod)
+        {
+            <input class="method-input @Display.MethodClass(Request.Method)" value="@Request.Method" placeholder="VERB" spellcheck="false"
+                   @onchange="OnCustomMethodChanged" @onblur="() => _customMethod = false" @ref="_methodInput" />
+        }
+        else
+        {
+            <select class="method-select @Display.MethodClass(Request.Method)" value="@MethodValue" @onchange="OnMethodChanged" title="HTTP method">
+                @foreach (var m in Display.StandardMethods)
+                {
+                    <option value="@m">@m</option>
+                }
+                @if (!Display.StandardMethods.Contains(MethodValue))
+                {
+                    <option value="@MethodValue">@MethodValue</option>
+                }
+                <option value="@CustomOption">Custom…</option>
+            </select>
+        }
+        <input class="url-input" value="@Request.Url" placeholder="https://localhost:5001/api/orders/:id?expand=items"
+               spellcheck="false" autocomplete="off" @oninput="OnUrlChanged" />
+        @if (Tab.IsSending)
+        {
+            <button class="btn danger send-btn" @onclick="() => State.Cancel(Tab)">Cancel</button>
+        }
+        else
+        {
+            <button class="btn primary send-btn" title="Send (Ctrl+Enter)" @onclick="() => State.SendAsync(Tab)">Send</button>
+        }
+    </div>
+
+    <nav class="subtabs">
+        @Section("params", "Params", ActiveCount(Request.QueryParams) + ActiveCount(Request.PathParams))
+        @Section("headers", "Headers", ActiveCount(Request.Headers))
+        @Section("auth", "Auth", Request.Auth is NoAuth ? 0 : 1, dot: true)
+        @Section("body", "Body", Request.Body is NoBody ? 0 : 1, dot: true)
+        @Section("settings", "Settings", Request.Settings.VerifyTls ? 0 : 1, dot: true)
+    </nav>
+
+    <div class="subtab-body">
+        @switch (Tab.RequestSection)
+        {
+            case "params":
+                <h4 class="section-title">Query parameters</h4>
+                <KeyValueGrid Items="Request.QueryParams" OnChanged="OnQueryParamsChanged" />
+                @if (Request.PathParams.Count > 0)
+                {
+                    <h4 class="section-title">Path parameters</h4>
+                    <KeyValueGrid Items="Request.PathParams" OnChanged="State.MarkDirty" AllowAdd="false" KeysReadOnly="true"
+                                  KeyHeader="Name" ValuePlaceholder="Value" />
+                }
+                else
+                {
+                    <p class="hint">Add <code>:name</code> segments to the URL path (e.g. <code>/orders/:id</code>) to fill them in here.</p>
+                }
+                break;
+
+            case "headers":
+                <KeyValueGrid Items="Request.Headers" OnChanged="State.MarkDirty" KeySuggestions="Display.CommonHeaders" KeyPlaceholder="Header" />
+                <p class="hint">Added automatically unless set here: @string.Join(" · ", AutoHeaders())</p>
+                break;
+
+            case "auth":
+                <AuthEditor Tab="Tab" />
+                break;
+
+            case "body":
+                <BodyEditor Tab="Tab" />
+                break;
+
+            case "settings":
+                <SettingsEditor Tab="Tab" />
+                break;
+        }
+    </div>
+</div>
+
+@code {
+    private const string CustomOption = "__custom";
+
+    [Parameter, EditorRequired] public RequestTab Tab { get; set; } = null!;
+
+    private RequestDefinition Request => Tab.Request;
+    private string MethodValue => Request.Method.Trim().ToUpperInvariant() is { Length: > 0 } m ? m : "GET";
+
+    private bool _customMethod;
+    private bool _focusMethod;
+    private ElementReference _methodInput;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusMethod && _customMethod)
+        {
+            _focusMethod = false;
+            await _methodInput.FocusAsync();
+        }
+    }
+
+    private RenderFragment Section(string id, string label, int count, bool dot = false) => __builder =>
+    {
+        <button class="subtab @(Tab.RequestSection == id ? "active" : null)" @onclick="() => Tab.RequestSection = id">
+            @label
+            @if (count > 0)
+            {
+                @if (dot)
+                {
+                    <span class="dot"></span>
+                }
+                else
+                {
+                    <span class="count">@count</span>
+                }
+            }
+        </button>
+    };
+
+    private static int ActiveCount(List<KeyValueItem> items) => items.Count(i => i.IsActive);
+
+    private void OnMethodChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString() ?? "GET";
+        if (value == CustomOption)
+        {
+            _customMethod = true;
+            _focusMethod = true;
+            return;
+        }
+        Request.Method = value;
+        State.MarkDirty();
+    }
+
+    private void OnCustomMethodChanged(ChangeEventArgs e)
+    {
+        Request.Method = (e.Value?.ToString() ?? "").Trim().ToUpperInvariant();
+        _customMethod = false;
+        State.MarkDirty();
+    }
+
+    private void OnUrlChanged(ChangeEventArgs e)
+    {
+        Request.Url = e.Value?.ToString() ?? "";
+        Request.QueryParams = UrlTools.SyncQueryParams(Request.Url, Request.QueryParams);
+        Request.PathParams = UrlTools.SyncPathParams(Request.Url, Request.PathParams);
+        State.MarkDirty();
+    }
+
+    private void OnQueryParamsChanged()
+    {
+        Request.Url = UrlTools.WithQuery(Request.Url, Request.QueryParams);
+        State.MarkDirty();
+    }
+
+    private IEnumerable<string> AutoHeaders()
+    {
+        bool Has(string name) => Request.Headers.Any(h => h.IsActive && h.Key.Trim().Equals(name, StringComparison.OrdinalIgnoreCase));
+
+        if (!Has("User-Agent")) yield return $"User-Agent: {HttpRequestBuilder.DefaultUserAgent}";
+        if (!Has("Accept")) yield return "Accept: */*";
+        if (!Has("Content-Type") && ContentTypeFromBody() is { } ct) yield return $"Content-Type: {ct}";
+        if (!Has("Authorization") && Request.Auth is BasicAuth or BearerAuth) yield return "Authorization (from Auth tab)";
+        if (Request.Auth is ApiKeyAuth { Location: ApiKeyLocation.Header } k && k.Key.Length > 0 && !Has(k.Key)) yield return $"{k.Key} (from Auth tab)";
+        yield return "Host, Content-Length";
+    }
+
+    private string? ContentTypeFromBody() => Request.Body switch
+    {
+        RawBody raw => raw.MediaType,
+        FormUrlEncodedBody => "application/x-www-form-urlencoded",
+        MultipartBody => "multipart/form-data",
+        BinaryFileBody b => string.IsNullOrWhiteSpace(b.ContentType) ? "from file extension" : b.ContentType,
+        _ => null,
+    };
+}

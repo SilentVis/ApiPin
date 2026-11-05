@@ -1,0 +1,20 @@
+@if (Headers.Count == 0)
+{
+    <p class="hint">No headers.</p>
+}
+else
+{
+    <table class="table headers">
+        <thead><tr><th>Name</th><th>Value</th></tr></thead>
+        <tbody>
+            @foreach (var (name, value) in Headers)
+            {
+                <tr><td class="mono">@name</td><td class="mono wrap">@value</td></tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<KeyValuePair<string, string>> Headers { get; set; } = [];
+}

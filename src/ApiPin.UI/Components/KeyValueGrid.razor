@@ -1,0 +1,146 @@
+@* Editable key/value rows. A trailing blank "ghost" row turns into a real row as soon as you type in it. *@
+
+<div class="kv">
+    @if (_bulk)
+    {
+        <textarea class="code-input kv-bulk" spellcheck="false" rows="8" value="@_bulkText" @oninput="OnBulkInput"
+                  placeholder="key: value&#10;// disabled-key: value"></textarea>
+    }
+    else
+    {
+        <div class="kv-grid @(ShowDescription ? "with-desc" : null)">
+            <div class="kv-head">
+                <span></span>
+                <span>@KeyHeader</span>
+                <span>Value</span>
+                @if (ShowDescription)
+                {
+                    <span>Description</span>
+                }
+                <span></span>
+            </div>
+            @foreach (var item in Rows)
+            {
+                var ghost = ReferenceEquals(item, _ghost);
+                <div class="kv-row @(item.Enabled ? null : "off") @(ghost ? "ghost" : null)" @key="item">
+                    @if (KeysReadOnly)
+                    {
+                        <span></span>
+                    }
+                    else
+                    {
+                        <input type="checkbox" title="Include" checked="@item.Enabled" disabled="@ghost" @onchange="e => SetEnabled(item, e)" />
+                    }
+                    <input class="kv-key" value="@item.Key" placeholder="@(ghost ? KeyPlaceholder : null)" readonly="@KeysReadOnly"
+                           list="@KeyListId" spellcheck="false" @oninput="e => Edit(item, e, static (i, v) => i.Key = v)" />
+                    <input class="kv-value" value="@item.Value" placeholder="@(ghost ? ValuePlaceholder : null)" spellcheck="false"
+                           @oninput="e => Edit(item, e, static (i, v) => i.Value = v)" />
+                    @if (ShowDescription)
+                    {
+                        <input class="kv-desc" value="@item.Description" placeholder="@(ghost ? "Description" : null)"
+                               @oninput="e => Edit(item, e, static (i, v) => i.Description = v.Length == 0 ? null : v)" />
+                    }
+                    @if (ghost || !AllowAdd)
+                    {
+                        <span></span>
+                    }
+                    else
+                    {
+                        <button class="icon-btn" title="Remove" @onclick="() => Remove(item)">✕</button>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @if (AllowAdd && AllowBulkEdit)
+    {
+        <button class="link-btn" @onclick="ToggleBulk">@(_bulk ? "Key-value edit" : "Bulk edit")</button>
+    }
+
+    @if (KeySuggestions is not null)
+    {
+        <datalist id="@_listId">
+            @foreach (var s in KeySuggestions)
+            {
+                <option value="@s"></option>
+            }
+        </datalist>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public List<KeyValueItem> Items { get; set; } = [];
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public bool AllowAdd { get; set; } = true;
+    [Parameter] public bool KeysReadOnly { get; set; }
+    [Parameter] public bool ShowDescription { get; set; } = true;
+    [Parameter] public bool AllowBulkEdit { get; set; } = true;
+    [Parameter] public string KeyHeader { get; set; } = "Key";
+    [Parameter] public string KeyPlaceholder { get; set; } = "Key";
+    [Parameter] public string ValuePlaceholder { get; set; } = "Value";
+    [Parameter] public IReadOnlyList<string>? KeySuggestions { get; set; }
+
+    private readonly string _listId = "kv-" + Guid.NewGuid().ToString("N");
+    private KeyValueItem _ghost = new();
+    private bool _bulk;
+    private string _bulkText = "";
+
+    private string? KeyListId => KeySuggestions is null ? null : _listId;
+    private IEnumerable<KeyValueItem> Rows => AllowAdd ? Items.Append(_ghost) : Items;
+
+    private Task Edit(KeyValueItem item, ChangeEventArgs e, Action<KeyValueItem, string> set)
+    {
+        set(item, e.Value?.ToString() ?? "");
+        if (ReferenceEquals(item, _ghost))
+        {
+            Items.Add(item);
+            _ghost = new();
+        }
+        return OnChanged.InvokeAsync();
+    }
+
+    private Task SetEnabled(KeyValueItem item, ChangeEventArgs e)
+    {
+        item.Enabled = e.Value is true;
+        return OnChanged.InvokeAsync();
+    }
+
+    private Task Remove(KeyValueItem item)
+    {
+        Items.Remove(item);
+        return OnChanged.InvokeAsync();
+    }
+
+    private void ToggleBulk()
+    {
+        _bulk = !_bulk;
+        if (_bulk)
+            _bulkText = string.Join(Environment.NewLine, Items.Where(i => !i.IsEmpty).Select(i => $"{(i.Enabled ? "" : "//")}{i.Key}: {i.Value}"));
+    }
+
+    private Task OnBulkInput(ChangeEventArgs e)
+    {
+        _bulkText = e.Value?.ToString() ?? "";
+        var byKey = Items.ToLookup(i => i.Key);
+        var parsed = new List<KeyValueItem>();
+
+        foreach (var raw in _bulkText.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0) continue;
+
+            var enabled = !line.StartsWith("//");
+            if (!enabled) line = line[2..].TrimStart();
+
+            var colon = line.IndexOf(':');
+            var key = (colon >= 0 ? line[..colon] : line).Trim();
+            var value = colon >= 0 ? line[(colon + 1)..].Trim() : "";
+            parsed.Add(new KeyValueItem { Key = key, Value = value, Enabled = enabled, Description = byKey[key].FirstOrDefault()?.Description });
+        }
+
+        Items.Clear();
+        Items.AddRange(parsed);
+        return OnChanged.InvokeAsync();
+    }
+}

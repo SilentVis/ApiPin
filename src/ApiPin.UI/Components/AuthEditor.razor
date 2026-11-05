@@ -1,0 +1,114 @@
+@inject WorkspaceState State
+
+<div class="form">
+    <label class="field">
+        <span>Type</span>
+        <select value="@TypeKey(Tab.Request.Auth)" @onchange="OnTypeChanged">
+            <option value="none">No auth</option>
+            <option value="basic">Basic</option>
+            <option value="bearer">Bearer token</option>
+            <option value="apikey">API key</option>
+            <option value="windows">Windows (Negotiate / NTLM)</option>
+        </select>
+    </label>
+
+    @switch (Tab.Request.Auth)
+    {
+        case NoAuth:
+            <p class="hint">This request is sent without authorization.</p>
+            break;
+
+        case BasicAuth basic:
+            <label class="field">
+                <span>Username</span>
+                <input value="@basic.Username" spellcheck="false" autocomplete="off" @oninput="e => Set(() => basic.Username = Str(e))" />
+            </label>
+            <SecretField Label="Password" Value="@basic.Password" ValueChanged="v => Set(() => basic.Password = v)" />
+            break;
+
+        case BearerAuth bearer:
+            <label class="field top">
+                <span>Token</span>
+                <textarea class="code-input" rows="4" spellcheck="false" value="@bearer.Token" @oninput="e => Set(() => bearer.Token = Str(e))"></textarea>
+            </label>
+            <label class="field">
+                <span>Prefix</span>
+                <input value="@bearer.Prefix" spellcheck="false" placeholder="(none)" @oninput="e => Set(() => bearer.Prefix = Str(e))" />
+            </label>
+            <p class="hint">Sent as <code>Authorization: @(string.IsNullOrWhiteSpace(bearer.Prefix) ? "" : bearer.Prefix.Trim() + " ")&lt;token&gt;</code></p>
+            break;
+
+        case ApiKeyAuth apiKey:
+            <label class="field">
+                <span>Key</span>
+                <input value="@apiKey.Key" spellcheck="false" @oninput="e => Set(() => apiKey.Key = Str(e))" />
+            </label>
+            <SecretField Label="Value" Value="@apiKey.Value" ValueChanged="v => Set(() => apiKey.Value = v)" />
+            <label class="field">
+                <span>Add to</span>
+                <select value="@apiKey.Location" @onchange="e => Set(() => apiKey.Location = Enum.Parse<ApiKeyLocation>(Str(e)))">
+                    <option value="@ApiKeyLocation.Header">Header</option>
+                    <option value="@ApiKeyLocation.Query">Query parameter</option>
+                </select>
+            </label>
+            break;
+
+        case WindowsAuth windows:
+            <label class="check">
+                <input type="checkbox" checked="@windows.UseCurrentUser" @onchange="e => Set(() => windows.UseCurrentUser = e.Value is true)" />
+                Use the current Windows user (@Environment.UserDomainName\@Environment.UserName)
+            </label>
+            @if (!windows.UseCurrentUser)
+            {
+                <label class="field">
+                    <span>Username</span>
+                    <input value="@windows.Username" spellcheck="false" autocomplete="off" @oninput="e => Set(() => windows.Username = Str(e))" />
+                </label>
+                <SecretField Label="Password" Value="@windows.Password" ValueChanged="v => Set(() => windows.Password = v)" />
+                <label class="field">
+                    <span>Domain</span>
+                    <input value="@windows.Domain" spellcheck="false" @oninput="e => Set(() => windows.Domain = Str(e))" />
+                </label>
+            }
+            <p class="hint">The handshake (Negotiate, Kerberos or NTLM) happens automatically when the server asks for it.</p>
+            break;
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public RequestTab Tab { get; set; } = null!;
+
+    private static string Str(ChangeEventArgs e) => e.Value?.ToString() ?? "";
+
+    private static string TypeKey(AuthConfig auth) => auth switch
+    {
+        BasicAuth => "basic",
+        BearerAuth => "bearer",
+        ApiKeyAuth => "apikey",
+        WindowsAuth => "windows",
+        _ => "none",
+    };
+
+    private void Set(Action change)
+    {
+        change();
+        State.MarkDirty();
+    }
+
+    private void OnTypeChanged(ChangeEventArgs e)
+    {
+        var current = Tab.Request.Auth;
+        Tab.AuthCache[current.GetType()] = current;
+
+        Type type = Str(e) switch
+        {
+            "basic" => typeof(BasicAuth),
+            "bearer" => typeof(BearerAuth),
+            "apikey" => typeof(ApiKeyAuth),
+            "windows" => typeof(WindowsAuth),
+            _ => typeof(NoAuth),
+        };
+        Tab.Request.Auth = Tab.AuthCache.TryGetValue(type, out var cached) ? cached : (AuthConfig)Activator.CreateInstance(type)!;
+        State.MarkDirty();
+    }
+}

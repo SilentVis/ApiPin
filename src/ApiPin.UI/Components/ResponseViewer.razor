@@ -1,0 +1,346 @@
+@inject WorkspaceState State
+@inject IPlatformServices Platform
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="response">
+    @if (Tab.IsSending)
+    {
+        <div class="empty-state">
+            <div class="spinner"></div>
+            <p>Sending request…</p>
+            <button class="btn" @onclick="() => State.Cancel(Tab)">Cancel</button>
+        </div>
+    }
+    else if (Tab.Response is not { } r)
+    {
+        <div class="empty-state">
+            <p class="muted">Enter a URL and click <b>Send</b>, or press <kbd>Ctrl</kbd> + <kbd>Enter</kbd>.</p>
+        </div>
+    }
+    else if (r.Error is { } error)
+    {
+        <div class="error-panel">
+            <h3>@error.Title</h3>
+            <p>@error.Detail</p>
+            @if (error.Hint is not null)
+            {
+                <p class="hint">@error.Hint</p>
+            }
+            @if (r.Request is not null)
+            {
+                <p class="muted">@r.Request.Method @r.Request.Url · failed after @Display.Duration(r.Timings.Total)</p>
+            }
+        </div>
+    }
+    else
+    {
+        EnsureBody(r);
+        <div class="status-bar">
+            <span class="status-pill @Display.StatusClass(r.StatusCode)">@r.StatusCode @r.ReasonPhrase</span>
+            <span class="metric" title="Total time">@Display.Duration(r.Timings.Total)</span>
+            <span class="metric" title="Body size">@BodyFormatter.FormatSize(r.SizeBytes)</span>
+            <span class="metric muted" title="Protocol">HTTP/@r.HttpVersion</span>
+            <span class="spacer"></span>
+            <span class="metric muted" title="Received at">@r.ReceivedAt.ToString("HH:mm:ss")</span>
+        </div>
+
+        <nav class="subtabs">
+            @Section("body", "Body", null)
+            @Section("headers", "Headers", r.Headers.Count)
+            @Section("cookies", "Cookies", r.Cookies.Count)
+            @Section("timings", "Timings", null)
+            @Section("request", "Request", null)
+        </nav>
+
+        <div class="subtab-body response-body">
+            @switch (Tab.ResponseSection)
+            {
+                case "headers":
+                    <HeaderTable Headers="r.Headers" />
+                    break;
+
+                case "cookies":
+                    @if (r.Cookies.Count == 0)
+                    {
+                        <p class="hint">No cookies were set by this response.</p>
+                    }
+                    else
+                    {
+                        <table class="table">
+                            <thead><tr><th>Name</th><th>Value</th><th>Domain</th><th>Path</th><th>Expires</th><th>HttpOnly</th><th>Secure</th><th>SameSite</th></tr></thead>
+                            <tbody>
+                                @foreach (var c in r.Cookies)
+                                {
+                                    <tr>
+                                        <td class="mono">@c.Name</td><td class="mono wrap">@c.Value</td><td>@c.Domain</td><td>@c.Path</td>
+                                        <td>@(c.MaxAge is null ? c.Expires : $"max-age {c.MaxAge}")</td>
+                                        <td>@(c.HttpOnly ? "✓" : "")</td><td>@(c.Secure ? "✓" : "")</td><td>@c.SameSite</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                    break;
+
+                case "timings":
+                    <div class="timings">
+                        @TimingRow("Waiting (time to first byte)", r.Timings.TimeToFirstByte, r.Timings.Total, "t-wait")
+                        @TimingRow("Content download", r.Timings.Download, r.Timings.Total, "t-download")
+                        <div class="timing-total">Total <b>@Display.Duration(r.Timings.Total)</b></div>
+                        <p class="hint">Waiting includes DNS lookup, connecting and the TLS handshake when a new connection was needed.</p>
+                    </div>
+                    break;
+
+                case "request" when r.Request is { } sent:
+                    <p class="mono sent-line"><b>@sent.Method</b> @sent.Url</p>
+                    <p class="muted">HTTP version: @sent.HttpVersion · Body: @(sent.BodyLength is { } len ? BodyFormatter.FormatSize(len) : "none")</p>
+                    <HeaderTable Headers="sent.Headers" />
+                    break;
+
+                default:
+                    @BodyView(r)
+                    break;
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public RequestTab Tab { get; set; } = null!;
+
+    private IJSObjectReference? _module;
+    private ElementReference _codeElement;
+
+    // Derived body state, rebuilt only when the response changes.
+    private ResponseResult? _bodyFor;
+    private BodyKind _kind;
+    private string _text = "";
+    private string _pretty = "";
+    private string _mode = "pretty";
+
+    // Rendered markup cache, so typing elsewhere doesn't re-highlight large bodies.
+    private (string? Text, string Search, bool Highlight) _markupKey;
+    private MarkupString _markup;
+    private int _matches;
+    private int _currentMatch;
+    private bool _scrollToMatch;
+
+    private string _search = "";
+    private bool _wrap = true;
+    private string? _notice;
+
+    private bool CanPreview => _kind is BodyKind.Html or BodyKind.Image;
+    private string ShownText => _mode == "raw" ? _text : _pretty;
+
+    private void EnsureBody(ResponseResult r)
+    {
+        if (ReferenceEquals(r, _bodyFor)) return;
+        _bodyFor = r;
+        _kind = BodyFormatter.Detect(r.ContentType, r.Body);
+        _text = _kind is BodyKind.Image or BodyKind.Binary or BodyKind.Empty ? "" : BodyFormatter.Decode(r.Body, r.ContentType);
+        _pretty = BodyFormatter.Pretty(_text, _kind);
+        _mode = _kind == BodyKind.Image ? "preview" : _mode == "preview" && !CanPreview ? "pretty" : _mode;
+        _notice = null;
+        _currentMatch = 0;
+    }
+
+    private RenderFragment Section(string id, string label, int? count) => __builder =>
+    {
+        <button class="subtab @(Tab.ResponseSection == id ? "active" : null)" @onclick="() => Tab.ResponseSection = id">
+            @label
+            @if (count > 0)
+            {
+                <span class="count">@count</span>
+            }
+        </button>
+    };
+
+    private RenderFragment TimingRow(string label, TimeSpan value, TimeSpan total, string cls) => __builder =>
+    {
+        var pct = total.Ticks > 0 ? Math.Max(1, value.Ticks * 100.0 / total.Ticks) : 0;
+        <div class="timing-row">
+            <span class="timing-label">@label</span>
+            <span class="timing-track"><span class="timing-bar @cls" style="width:@(pct.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))%"></span></span>
+            <span class="timing-value">@Display.Duration(value)</span>
+        </div>
+    };
+
+    private RenderFragment BodyView(ResponseResult r) => __builder =>
+    {
+        // Built first: it also updates the match count shown in the toolbar.
+        var showsCode = _kind is BodyKind.Json or BodyKind.Xml or BodyKind.Text || (_kind == BodyKind.Html && _mode != "preview");
+        var markup = showsCode ? Markup() : default;
+
+        <div class="body-toolbar">
+            @if (_kind is not (BodyKind.Empty or BodyKind.Binary or BodyKind.Image))
+            {
+                <div class="segmented">
+                    <button class="@(_mode == "pretty" ? "active" : null)" @onclick='() => _mode = "pretty"'>Pretty</button>
+                    <button class="@(_mode == "raw" ? "active" : null)" @onclick='() => _mode = "raw"'>Raw</button>
+                    @if (CanPreview)
+                    {
+                        <button class="@(_mode == "preview" ? "active" : null)" @onclick='() => _mode = "preview"'>Preview</button>
+                    }
+                </div>
+                @if (_mode != "preview")
+                {
+                    <input class="search" type="search" placeholder="Find in body" value="@_search" @oninput="OnSearch" @onkeydown="OnSearchKey" />
+                    @if (_search.Length > 0)
+                    {
+                        <span class="muted match-info">@(_matches == 0 ? "No matches" : $"{_currentMatch + 1} of {_matches}{(_matches >= SyntaxHighlighter.MaxSearchMarks ? "+" : "")}")</span>
+                        <button class="icon-btn" title="Previous (Shift+Enter)" disabled="@(_matches == 0)" @onclick="() => MoveMatch(-1)">↑</button>
+                        <button class="icon-btn" title="Next (Enter)" disabled="@(_matches == 0)" @onclick="() => MoveMatch(1)">↓</button>
+                    }
+                    <label class="check compact"><input type="checkbox" checked="@_wrap" @onchange="e => _wrap = e.Value is true" /> Wrap</label>
+                }
+            }
+            <span class="spacer"></span>
+            @if (_notice is not null)
+            {
+                <span class="muted">@_notice</span>
+            }
+            @if (_text.Length > 0)
+            {
+                <button class="btn ghost" @onclick="Copy">Copy</button>
+            }
+            @if (r.Body.Length > 0)
+            {
+                <button class="btn ghost" @onclick="() => Save(r)">Save…</button>
+            }
+        </div>
+
+        @if (r.BodyTruncated)
+        {
+            <div class="banner warn">Showing the first @BodyFormatter.FormatSize(r.Body.Length) of @BodyFormatter.FormatSize(r.SizeBytes).</div>
+        }
+
+        @switch (_kind)
+        {
+            case BodyKind.Empty:
+                <p class="hint">The response has no body.</p>
+                break;
+
+            case BodyKind.Binary:
+                <p class="hint">Binary content (@BodyFormatter.FormatSize(r.Body.Length), @(r.ContentType ?? "unknown type")). Use Save… to open it in another app.</p>
+                break;
+
+            case BodyKind.Image:
+                <div class="preview image"><img src="data:@(r.ContentType);base64,@Convert.ToBase64String(r.Body)" alt="Response image" /></div>
+                break;
+
+            case BodyKind.Html when _mode == "preview":
+                <iframe class="preview html" sandbox="" srcdoc="@_text" title="HTML preview"></iframe>
+                break;
+
+            default:
+                <pre class="code @(_wrap ? "wrap" : null)" @ref="_codeElement"><code>@markup</code></pre>
+                break;
+        }
+    };
+
+    private MarkupString Markup()
+    {
+        var text = ShownText;
+        var highlight = _mode == "pretty";
+        if (ReferenceEquals(_markupKey.Text, text) && _markupKey.Search == _search && _markupKey.Highlight == highlight) return _markup;
+
+        if (_search.Length > 0)
+        {
+            (var html, _matches) = SyntaxHighlighter.Search(text, _search);
+            _markup = new MarkupString(html);
+        }
+        else
+        {
+            _matches = 0;
+            _markup = new MarkupString(highlight ? SyntaxHighlighter.Highlight(text, _kind) : System.Net.WebUtility.HtmlEncode(text));
+        }
+        _currentMatch = Math.Min(_currentMatch, Math.Max(0, _matches - 1));
+        _scrollToMatch = _matches > 0;
+        _markupKey = (text, _search, highlight);
+        return _markup;
+    }
+
+    private void OnSearch(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? "";
+        _currentMatch = 0;
+    }
+
+    private void OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") MoveMatch(e.ShiftKey ? -1 : 1);
+    }
+
+    private void MoveMatch(int delta)
+    {
+        if (_matches == 0) return;
+        _currentMatch = (_currentMatch + delta + _matches) % _matches;
+        _scrollToMatch = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_scrollToMatch && Tab.ResponseSection == "body")
+        {
+            _scrollToMatch = false;
+            var module = await Module();
+            await module.InvokeVoidAsync("showMatch", _codeElement, _currentMatch);
+        }
+    }
+
+    private async Task Copy()
+    {
+        var module = await Module();
+        await module.InvokeVoidAsync("copyText", _mode == "raw" ? _text : _pretty);
+        _notice = "Copied";
+    }
+
+    private async Task Save(ResponseResult r)
+    {
+        var name = SuggestFileName(r);
+        if (Platform.SupportsFileDialogs)
+        {
+            if (await Platform.SaveFileAsync(name, r.Body) is { } path) _notice = $"Saved to {path}";
+        }
+        else
+        {
+            var module = await Module();
+            await module.InvokeVoidAsync("downloadFile", name, r.ContentType ?? "application/octet-stream", Convert.ToBase64String(r.Body));
+        }
+    }
+
+    private string SuggestFileName(ResponseResult r)
+    {
+        var last = r.Request?.Url is { } url && Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            ? uri.Segments.LastOrDefault()?.Trim('/')
+            : null;
+        var name = string.IsNullOrWhiteSpace(last) ? "response" : last;
+        if (Path.HasExtension(name)) return name;
+
+        return name + _kind switch
+        {
+            BodyKind.Json => ".json",
+            BodyKind.Xml => ".xml",
+            BodyKind.Html => ".html",
+            BodyKind.Text => ".txt",
+            BodyKind.Image => "." + (r.ContentType?.Split(';')[0].Split('/').LastOrDefault()?.Split('+')[0] ?? "img"),
+            _ => ".bin",
+        };
+    }
+
+    private async Task<IJSObjectReference> Module() =>
+        _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/ApiPin.UI/apipin.js");
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is null) return;
+        try
+        {
+            await _module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+}

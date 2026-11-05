@@ -1,0 +1,65 @@
+@inject WorkspaceState State
+
+<div class="form">
+    <label class="field">
+        <span>Timeout</span>
+        <span class="inline">
+            <input type="number" min="0" step="1000" class="narrow" value="@Settings.TimeoutMs" @onchange="e => SetInt(e, v => Settings.TimeoutMs = v)" />
+            <span class="muted">ms (0 = no timeout)</span>
+        </span>
+    </label>
+
+    <label class="check">
+        <input type="checkbox" checked="@Settings.FollowRedirects" @onchange="e => Set(() => Settings.FollowRedirects = e.Value is true)" />
+        Follow redirects
+    </label>
+    @if (Settings.FollowRedirects)
+    {
+        <label class="field">
+            <span>Max redirects</span>
+            <input type="number" min="1" max="50" class="narrow" value="@Settings.MaxRedirects" @onchange="e => SetInt(e, v => Settings.MaxRedirects = Math.Clamp(v, 1, 50))" />
+        </label>
+    }
+
+    <label class="check">
+        <input type="checkbox" checked="@Settings.VerifyTls" @onchange="e => Set(() => Settings.VerifyTls = e.Value is true)" />
+        Verify TLS certificate
+        @if (!Settings.VerifyTls)
+        {
+            <span class="badge warn">Off: any certificate is accepted</span>
+        }
+    </label>
+
+    <label class="field">
+        <span>HTTP version</span>
+        <select value="@(Settings.HttpVersion ?? "auto")" @onchange="OnVersionChanged">
+            <option value="auto">Auto (HTTP/2 if offered)</option>
+            <option value="1.1">HTTP/1.1</option>
+            <option value="2">HTTP/2</option>
+            <option value="3">HTTP/3</option>
+        </select>
+    </label>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public RequestTab Tab { get; set; } = null!;
+
+    private RequestSettings Settings => Tab.Request.Settings;
+
+    private void Set(Action change)
+    {
+        change();
+        State.MarkDirty();
+    }
+
+    private void OnVersionChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        Set(() => Settings.HttpVersion = value is null or "auto" ? null : value);
+    }
+
+    private void SetInt(ChangeEventArgs e, Action<int> set)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var value) && value >= 0) Set(() => set(value));
+    }
+}

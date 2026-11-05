@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ApiPin.Core/ApiPin.Core.csproj" />
+    <Project Path="src/ApiPin.Storage/ApiPin.Storage.csproj" />
+    <Project Path="src/ApiPin.UI/ApiPin.UI.csproj" />
+    <Project Path="src/ApiPin.Desktop/ApiPin.Desktop.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ApiPin.Core.Tests/ApiPin.Core.Tests.csproj" />
+    <Project Path="tests/ApiPin.Storage.Tests/ApiPin.Storage.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/ApiPin.EchoServer/ApiPin.EchoServer.csproj" />
+  </Folder>
+</Solution>

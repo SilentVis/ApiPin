@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\ApiPin.Core\ApiPin.Core.csproj" />
+  </ItemGroup>
+
+</Project>
