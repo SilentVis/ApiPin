@@ -247,24 +247,24 @@ Effort is in **focused dev-days** for one developer. Each phase ends with a usab
 
 ### Phase 0 — Foundation (≈ 2–3 days)
 
-- [ ] Create the solution, projects and `Directory.Build.props` / `Directory.Packages.props` (nullable on, warnings as errors)
-- [ ] WPF host with `BlazorWebView` rendering a "Hello ApiPin" Razor component; Fluent UI theme wired (dark/light follows Windows)
-- [ ] DI composition root in `ApiPin.Desktop`; `ILogger` to a rolling file in `%APPDATA%\ApiPin\logs`
-- [ ] **EchoServer** minimal API: `/echo` (returns method, headers, query, body), `/status/{code}`, `/delay/{ms}`, `/redirect/{n}`, `/auth/basic`, `/auth/bearer`, `/auth/apikey`, `/cookies/set`, `/upload`, `/large/{mb}`, `/oauth/token` (fake client-credentials server)
+- [x] Create the solution, projects and `Directory.Build.props` / `Directory.Packages.props` (nullable on, warnings as errors)
+- [x] WPF host with `BlazorWebView` rendering a "Hello ApiPin" Razor component; Fluent UI theme wired (dark/light follows Windows) (plain CSS light/dark theme instead of Fluent UI)
+- [ ] DI composition root in `ApiPin.Desktop`; `ILogger` to a rolling file in `%APPDATA%\ApiPin\logs` (DI root done; file logging still to do)
+- [ ] **EchoServer** minimal API: `/echo` (returns method, headers, query, body), `/status/{code}`, `/delay/{ms}`, `/redirect/{n}`, `/auth/basic`, `/auth/bearer`, `/auth/apikey`, `/cookies/set`, `/upload`, `/large/{mb}`, `/oauth/token` (fake client-credentials server) (catch-all echo done; dedicated endpoints still to do)
 - [ ] GitHub Actions: restore → build → test on push/PR
-- [ ] `README.md` with build/run instructions
+- [x] `README.md` with build/run instructions
 
 **Exit criteria:** `dotnet build` is green, the app window opens, and EchoServer runs on `https://localhost:7090`.
 
 ### Phase 1 — Core engine (≈ 5–6 days)
 
-- [ ] Domain model (§3.3) with JSON round-trip tests
-- [ ] URL parser that keeps `{{vars}}` and `:pathParams` intact; two-way sync between the URL and the query-params list
+- [x] Domain model (§3.3) with JSON round-trip tests
+- [x] URL parser that keeps `{{vars}}` and `:pathParams` intact; two-way sync between the URL and the query-params list
 - [ ] `VariableResolver`: scopes, dynamic vars, nesting, cycle detection, list of unresolved names
-- [ ] `HttpRequestBuilder`: method, URL encoding, headers (including restricted ones such as `Host`), all body types with correct `Content-Type` and multipart boundaries
-- [ ] Auth providers: None, Basic, Bearer, API Key (header or query)
-- [ ] `HttpExecutor`: handler pool, timeout, cancellation, decompression, timings, size, error mapping (DNS failure, connection refused, TLS error, timeout → friendly messages)
-- [ ] Integration tests against EchoServer, covering every body type and auth type
+- [x] `HttpRequestBuilder`: method, URL encoding, headers (including restricted ones such as `Host`), all body types with correct `Content-Type` and multipart boundaries
+- [x] Auth providers: None, Basic, Bearer, API Key (header or query)
+- [x] `HttpExecutor`: handler pool, timeout, cancellation, decompression, timings, size, error mapping (DNS failure, connection refused, TLS error, timeout → friendly messages)
+- [ ] Integration tests against EchoServer, covering every body type and auth type (executor tests run against an in-process Kestrel server; body/auth types are covered by builder unit tests only)
 
 **Exit criteria:** a unit/integration test can build any request from a `RequestDefinition` and get a correct `ResponseResult`. Core coverage ≥ 80%.
 
@@ -272,16 +272,16 @@ Effort is in **focused dev-days** for one developer. Each phase ends with a usab
 
 **Milestone: "replaces Postman for ad-hoc calls".**
 
-- [ ] App layout: left sidebar (empty for now), main area with request tabs, resizable split between request and response (vertical/horizontal toggle)
-- [ ] Request bar: method dropdown (with colour coding), URL box, **Send** / **Cancel** button; `Ctrl+Enter` sends
-- [ ] Sub-tabs: **Params** (query + path), **Headers**, **Auth**, **Body**, **Settings**
-- [ ] Reusable `KeyValueGrid` component: enable checkbox, key, value, description, bulk-edit text mode, auto-append empty row, common-header autocomplete
-- [ ] Auth tab: type selector and forms for None / Inherit / Basic / Bearer / API Key
-- [ ] Body tab: none / raw (JSON, XML, text) in Monaco with **Format** button / form-urlencoded / multipart with file picker / binary file
-- [ ] Response panel: status pill (colour by class), time, size; tabs **Body** (Pretty via Monaco read-only, Raw, Preview for HTML and images), **Headers**, **Cookies**, **Timings**
-- [ ] Response actions: copy body, save to file, search in body
-- [ ] Settings tab: timeout, follow redirects, verify TLS (warning badge when off)
-- [ ] Unsaved "scratch" tabs persisted across restarts in `.apipin/` or app data
+- [x] App layout: left sidebar (empty for now), main area with request tabs, resizable split between request and response (vertical/horizontal toggle)
+- [x] Request bar: method dropdown (with colour coding), URL box, **Send** / **Cancel** button; `Ctrl+Enter` sends
+- [x] Sub-tabs: **Params** (query + path), **Headers**, **Auth**, **Body**, **Settings**
+- [x] Reusable `KeyValueGrid` component: enable checkbox, key, value, description, bulk-edit text mode, auto-append empty row, common-header autocomplete
+- [x] Auth tab: type selector and forms for None / Inherit / Basic / Bearer / API Key (Inherit arrives with the `InheritanceResolver` in Phase 3)
+- [x] Body tab: none / raw (JSON, XML, text) in Monaco with **Format** button / form-urlencoded / multipart with file picker / binary file (plain text editor instead of Monaco)
+- [x] Response panel: status pill (colour by class), time, size; tabs **Body** (Pretty via Monaco read-only, Raw, Preview for HTML and images), **Headers**, **Cookies**, **Timings** (Pretty uses a built-in syntax highlighter instead of Monaco)
+- [x] Response actions: copy body, save to file, search in body
+- [x] Settings tab: timeout, follow redirects, verify TLS (warning badge when off)
+- [x] Unsaved "scratch" tabs persisted across restarts in `.apipin/` or app data
 
 **Exit criteria:** you can call your own local API with JSON bodies and bearer tokens entirely through the UI, using self-signed dev certs.
 
@@ -318,11 +318,11 @@ Effort is in **focused dev-days** for one developer. Each phase ends with a usab
 - [ ] **OAuth 2.0 client credentials**: token URL, client ID/secret, scope, audience, credentials in body vs Basic header. Tokens cached until expiry and refreshed automatically; "Get new token" and "Clear token" buttons; token viewer that decodes JWT claims
 - [ ] **OAuth 2.0 authorization code + PKCE**: system browser + loopback redirect listener (`http://127.0.0.1:{port}/callback`); refresh-token support
 - [ ] **OAuth 2.0 password grant** (legacy, for older apps)
-- [ ] **Windows / Negotiate (NTLM/Kerberos)** using current credentials or explicit ones
+- [x] **Windows / Negotiate (NTLM/Kerberos)** using current credentials or explicit ones
 - [ ] **Azure helper (optional):** "Use Azure CLI token" – runs `az account get-access-token --resource {{resource}}`, which is handy for APIs secured by Entra ID
 - [ ] Client certificates (mTLS): PFX file + password (secret) or a Windows certificate store thumbprint
 - [ ] Proxy settings: system proxy / custom / none, with bypass list
-- [ ] HTTP version selection (1.1 / 2 / 3)
+- [x] HTTP version selection (1.1 / 2 / 3)
 
 **Exit criteria:** you can call an Entra-ID-protected API and a mutual-TLS endpoint without copying tokens by hand.
 
