@@ -41,7 +41,7 @@ public sealed class RequestDefinition
         Headers = Headers.ConvertAll(h => h.Clone()),
         Auth = Auth.Clone(),
         Body = Body.Clone(),
-        Settings = Settings with { },
+        Settings = Settings.Copy(),
     };
 }
 
@@ -56,4 +56,23 @@ public sealed record RequestSettings
 
     /// <summary>null = auto (HTTP/2 when the server offers it), or "1.1", "2", "3".</summary>
     public string? HttpVersion { get; set; }
+
+    /// <summary>Client certificate for mutual TLS; null for none.</summary>
+    public ClientCertificateSettings? ClientCertificate { get; set; }
+
+    public RequestSettings Copy() => this with { ClientCertificate = ClientCertificate is { } c ? c with { } : null };
+}
+
+public enum ClientCertificateSource { File, Store }
+
+/// <summary>A client certificate: a PFX/P12 file with its password, or one in the Windows certificate store by thumbprint.</summary>
+public sealed record ClientCertificateSettings
+{
+    public ClientCertificateSource Source { get; set; } = ClientCertificateSource.File;
+    public string FilePath { get; set; } = "";
+
+    /// <summary>PFX password; use a secret variable such as <c>{{certPassword}}</c> to keep it out of Git.</summary>
+    public string Password { get; set; } = "";
+
+    public string Thumbprint { get; set; } = "";
 }

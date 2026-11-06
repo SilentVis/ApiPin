@@ -36,6 +36,7 @@
         <span class="muted shortcuts">
             Ctrl+Enter send · Ctrl+S save · @(Platform.RunsInBrowser ? "Alt+T new tab · Alt+W close" : "Ctrl+T new tab · Ctrl+W close")
         </span>
+        <button class="icon-btn" title="Settings: proxy, tokens" @onclick="() => _settings = true">⚙</button>
         <button class="icon-btn" title="@(_sideBySide ? "Stack request above response" : "Show request and response side by side")" @onclick="ToggleLayout">
             @(_sideBySide ? "⬒" : "◫")
         </button>
@@ -66,6 +67,10 @@
     {
         <EnvironmentManager OnClose="() => _environments = false" />
     }
+    @if (_settings)
+    {
+        <AppSettingsDialog OnClose="() => _settings = false" />
+    }
 </div>
 
 @code {
@@ -77,6 +82,7 @@
     private bool _sidebar = true;
     private bool _peek;
     private bool _environments;
+    private bool _settings;
     private int _pickerKey;
 
     private const string NoEnvironment = "none";

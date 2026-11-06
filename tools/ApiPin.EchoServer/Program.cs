@@ -19,7 +19,7 @@ foreach (var url in EchoApp.ListenUrls(options, app)) Console.WriteLine($"  {url
 if (options.HttpsPort > 0 && !EchoApp.HasHttps(app))
     Console.WriteLine($"  (HTTPS on {options.HttpsPort} is off: no ASP.NET dev certificate. Run `dotnet dev-certs https --trust` to add one.)");
 Console.WriteLine("Endpoints: /echo /status/{code} /delay/{ms} /redirect/{n} /auth/basic /auth/bearer /auth/apikey");
-Console.WriteLine("           /cookies /cookies/set /upload /large/{mb} /oauth/token /oauth/authorize /oauth/me — anything else echoes");
+Console.WriteLine("           /cookies /cookies/set /upload /large/{mb} /certs/client /oauth/token /oauth/authorize /oauth/me — anything else echoes");
 Console.WriteLine("Press Ctrl+C to stop");
 app.Run();
 

@@ -83,7 +83,12 @@ public static class EchoApp
 
     private static void Listen(KestrelServerOptions kestrel, string host, int port, X509Certificate2? certificate)
     {
-        Action<ListenOptions> configure = certificate is null ? _ => { } : o => o.UseHttps(certificate);
+        // HTTPS accepts (but doesn't require) a client certificate, so mutual TLS can be tried with /certs/client.
+        Action<ListenOptions> configure = certificate is null ? _ => { } : o => o.UseHttps(certificate, https =>
+        {
+            https.ClientCertificateMode = Microsoft.AspNetCore.Server.Kestrel.Https.ClientCertificateMode.AllowCertificate;
+            https.AllowAnyClientCertificate();
+        });
         if (host == "localhost" && port != 0) kestrel.ListenLocalhost(port, configure);
         else if (host is "localhost") kestrel.Listen(IPAddress.Loopback, port, configure);
         else if (host is "0.0.0.0" or "*") kestrel.ListenAnyIP(port, configure);
@@ -141,6 +146,9 @@ public static class EchoApp
         });
 
         app.Map("/upload", (Delegate)Upload);
+        app.Map("/certs/client", (HttpContext ctx) => ctx.Connection.ClientCertificate is { } cert
+            ? Results.Json(new { presented = true, subject = cert.Subject, issuer = cert.Issuer, thumbprint = cert.Thumbprint, notAfter = cert.NotAfter }, Json)
+            : Results.Json(new { presented = false, hint = ctx.Request.IsHttps ? "No client certificate was sent." : "Use the HTTPS port." }, Json, statusCode: 401));
         app.Map("/large/{mb:double}", Large);
 
         app.MapPost("/oauth/token", (HttpContext ctx, OAuthServer oauth) => oauth.Token(ctx));
@@ -172,6 +180,7 @@ public static class EchoApp
             remoteAddress = $"{ctx.Connection.RemoteIpAddress}:{ctx.Connection.RemotePort}",
             auth = DescribeAuth(req.Headers.Authorization.ToString()),
             cookies = req.Cookies.ToDictionary(c => c.Key, c => c.Value),
+            clientCertificate = ctx.Connection.ClientCertificate?.Subject,
             headers = req.Headers.ToDictionary(h => h.Key, h => h.Value.ToArray()),
             body = new
             {

@@ -315,16 +315,16 @@ Effort is in **focused dev-days** for one developer. Each phase ends with a usab
 
 ### Phase 5 — Advanced auth and connection options (≈ 5–6 days)
 
-- [ ] **OAuth 2.0 client credentials**: token URL, client ID/secret, scope, audience, credentials in body vs Basic header. Tokens cached until expiry and refreshed automatically; "Get new token" and "Clear token" buttons; token viewer that decodes JWT claims
-- [ ] **OAuth 2.0 authorization code + PKCE**: system browser + loopback redirect listener (`http://127.0.0.1:{port}/callback`); refresh-token support
-- [ ] **OAuth 2.0 password grant** (legacy, for older apps)
+- [x] **OAuth 2.0 client credentials**: token URL, client ID/secret, scope, audience, credentials in body vs Basic header. Tokens cached until expiry and refreshed automatically; "Get new token" and "Clear token" buttons; token viewer that decodes JWT claims (`TokenService` in Core; token requests use the request's TLS and certificate settings)
+- [x] **OAuth 2.0 authorization code + PKCE**: system browser + loopback redirect listener (`http://127.0.0.1:{port}/callback`); refresh-token support (default redirect `http://localhost:7890/callback`; the listener is a plain socket, so no URL ACL or admin rights; state is checked)
+- [x] **OAuth 2.0 password grant** (legacy, for older apps)
 - [x] **Windows / Negotiate (NTLM/Kerberos)** using current credentials or explicit ones
-- [ ] **Azure helper (optional):** "Use Azure CLI token" – runs `az account get-access-token --resource {{resource}}`, which is handy for APIs secured by Entra ID
-- [ ] Client certificates (mTLS): PFX file + password (secret) or a Windows certificate store thumbprint
-- [ ] Proxy settings: system proxy / custom / none, with bypass list
+- [x] **Azure helper (optional):** "Use Azure CLI token" – runs `az account get-access-token --resource {{resource}}`, which is handy for APIs secured by Entra ID (an auth type of its own; `--scope` is used for values ending in `/.default`; optional tenant)
+- [x] Client certificates (mTLS): PFX file + password (secret) or a Windows certificate store thumbprint (per request, in the Settings tab; the EchoServer's `/certs/client` shows what it received)
+- [x] Proxy settings: system proxy / custom / none, with bypass list (app-wide, in the new ⚙ Settings dialog; wildcard bypass entries and optional proxy credentials)
 - [x] HTTP version selection (1.1 / 2 / 3)
 
-**Exit criteria:** you can call an Entra-ID-protected API and a mutual-TLS endpoint without copying tokens by hand.
+**Exit criteria:** you can call an Entra-ID-protected API and a mutual-TLS endpoint without copying tokens by hand. (Verified against the EchoServer's OAuth server and mTLS endpoint and a faked Azure CLI; not yet against a real Entra ID tenant.)
 
 ### Phase 6 — Productivity (≈ 6–7 days)
 

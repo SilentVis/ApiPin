@@ -7,18 +7,23 @@ A lightweight, local-first alternative to Postman for building and sending HTTP 
 
 ## Status
 
-**v0.3 — key features, collections and environments.** Request tabs, the request editor and the response viewer work
-end to end; requests are saved into collections on disk and exported for Postman; environments re-target every
-request, with secrets kept out of Git. OAuth 2.0 (Phase 5) is next.
+**v0.4 — key features, collections, environments and advanced auth.** Request tabs, the request editor and the
+response viewer work end to end; requests are saved into collections on disk and exported for Postman; environments
+re-target every request, with secrets kept out of Git; OAuth 2.0, Azure CLI tokens, client certificates and proxies
+work. Productivity features (history, cURL, imports — Phase 6) are next.
 See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the architecture and roadmap.
 
 What works today:
 
 - **Requests:** any method (including custom verbs), URL with two-way query-param sync, `:path` params,
   headers with autocomplete and bulk edit
-- **Auth:** None, Basic, Bearer (custom prefix), API key (header or query), Windows (Negotiate/NTLM, current or explicit user)
+- **Auth:** None, Basic, Bearer (custom prefix), API key (header or query), Windows (Negotiate/NTLM, current or explicit user),
+  **OAuth 2.0** (client credentials, authorization code with PKCE in your browser, password; tokens cached and refreshed,
+  JWT claims shown) and **Azure CLI** tokens for Entra ID-protected APIs (`az login` once)
 - **Body:** raw JSON/XML/text/HTML/JavaScript with a Format button, form URL-encoded, multipart (text and file parts), binary file
-- **Settings per request:** timeout, follow redirects, verify TLS (off for local dev certs), HTTP/1.1 / 2 / 3
+- **Settings per request:** timeout, follow redirects, verify TLS (off for local dev certs), HTTP/1.1 / 2 / 3,
+  client certificate for mutual TLS (PFX file or Windows certificate store); **app-wide proxy** (system, none or custom
+  with a bypass list) in ⚙ Settings
 - **Response:** status, time, size; body as Pretty (syntax-highlighted), Raw or Preview (HTML, images), with search,
   copy and save; headers, cookies, timings, and the request as actually sent
 - **Friendly errors** for DNS failures, refused connections, TLS problems, timeouts and cancellation

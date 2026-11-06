@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Sockets;
 using System.Security.Authentication;
+using ApiPin.Core.Auth;
 using ApiPin.Core.Models;
 
 namespace ApiPin.Core.Http;
@@ -16,13 +17,38 @@ public interface IHttpExecutor
     Task<ResponseResult> SendAsync(RequestDefinition request, CancellationToken cancellationToken = default);
 }
 
-public sealed class HttpExecutor(HandlerPool pool, HttpExecutorOptions? options = null) : IHttpExecutor
+/// <param name="tokens">Gets OAuth 2.0 / Azure CLI tokens; without it those auth types fail with a message.</param>
+public sealed class HttpExecutor(HandlerPool pool, HttpExecutorOptions? options = null, TokenService? tokens = null) : IHttpExecutor
 {
     private readonly HttpExecutorOptions _options = options ?? new();
 
+    /// <summary>Sends a request whose inheritance and variables are already resolved (see <see cref="Execution.RequestPreparer"/>).</summary>
     public async Task<ResponseResult> SendAsync(RequestDefinition request, CancellationToken cancellationToken = default)
     {
+        // Pipeline step 3: token-based auth becomes a bearer header.
+        if (TokenService.Handles(request.Auth))
+        {
+            if (tokens is null)
+                return ResponseResult.Failed(new ExecutionError(ErrorKind.Auth, "Token auth isn't available", "This host has no token service."), null, TimingInfo.Zero);
+            try
+            {
+                var token = await tokens.GetTokenAsync(request.Auth, request.Settings, cancellationToken: cancellationToken);
+                var prefix = request.Auth is OAuth2Auth o ? o.HeaderPrefix : "Bearer";
+                request = request.Clone(newId: false);
+                request.Auth = new BearerAuth { Token = token.AccessToken, Prefix = prefix };
+            }
+            catch (AuthTokenException ex)
+            {
+                return ResponseResult.Failed(new ExecutionError(ErrorKind.Auth, ex.Title, ex.Message, ex.Hint), null, TimingInfo.Zero);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return ResponseResult.Failed(new ExecutionError(ErrorKind.Cancelled, "Request cancelled", "Cancelled while getting a token."), null, TimingInfo.Zero);
+            }
+        }
+
         HttpRequestMessage message;
+        HttpClient client;
         try
         {
             message = HttpRequestBuilder.Build(request);
@@ -35,7 +61,14 @@ public sealed class HttpExecutor(HandlerPool pool, HttpExecutorOptions? options 
         using (message)
         {
             var sent = DescribeSent(message);
-            var client = pool.GetClient(request.Settings, request.Auth);
+            try
+            {
+                client = pool.GetClient(request.Settings, request.Auth);
+            }
+            catch (RequestBuildException ex)
+            {
+                return ResponseResult.Failed(new ExecutionError(ErrorKind.InvalidRequest, "Client certificate problem", ex.Message), sent, TimingInfo.Zero);
+            }
 
             using var timeout = new CancellationTokenSource();
             if (request.Settings.TimeoutMs > 0) timeout.CancelAfter(request.Settings.TimeoutMs);

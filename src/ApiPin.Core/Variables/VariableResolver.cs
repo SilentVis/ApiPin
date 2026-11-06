@@ -126,6 +126,8 @@ public static partial class VariableResolver
         resolved.Headers = request.Headers.ConvertAll(Item);
         resolved.Auth = request.Auth.Map(R);
         resolved.Body = request.Body.Map(R);
+        if (request.Settings.ClientCertificate is { } cert)
+            resolved.Settings.ClientCertificate = cert with { FilePath = R(cert.FilePath), Password = R(cert.Password), Thumbprint = R(cert.Thumbprint) };
         return resolved;
     }
 

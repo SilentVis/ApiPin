@@ -1,3 +1,4 @@
+using ApiPin.Core.Auth;
 using ApiPin.Core.Http;
 using ApiPin.Storage;
 using ApiPin.UI.Services;
@@ -16,9 +17,11 @@ public static class ServiceCollectionExtensions
     {
         services.AddLogging();
         services.AddSingleton(new WorkspaceStartup(startupWorkspace));
-        services.AddSingleton<HandlerPool>();
+        services.AddSingleton(sp => new HandlerPool(() => sp.GetRequiredService<AppSettingsStore>().Load().Proxy));
+        services.TryAddSingleton<IAuthorizationBrowser, SystemBrowser>();
+        services.AddSingleton(sp => new TokenService(sp.GetRequiredService<HandlerPool>(), sp.GetRequiredService<IAuthorizationBrowser>()));
         services.AddSingleton(new HttpExecutorOptions());
-        services.AddSingleton<IHttpExecutor, HttpExecutor>();
+        services.AddSingleton<IHttpExecutor>(sp => new HttpExecutor(sp.GetRequiredService<HandlerPool>(), sp.GetRequiredService<HttpExecutorOptions>(), sp.GetRequiredService<TokenService>()));
         services.AddSingleton(new ScratchTabStore(scratchFilePath ?? ScratchTabStore.DefaultPath));
         services.AddSingleton(new AppSettingsStore(AppSettingsStore.DefaultPath));
         services.AddSingleton<ISecretStore>(OperatingSystem.IsWindows()

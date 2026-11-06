@@ -659,3 +659,12 @@ select.compact { padding: 3px 6px; font-size: 12px; }
 .var-suggest-item.dyn { color: var(--info); }
 .var-suggest-item.active, .var-suggest-item:hover { background: var(--bg-hover); }
 .response-warning { margin: 8px 12px 0; }
+
+/* ---------- Tokens and settings ---------- */
+
+.token-panel { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; max-width: 760px; }
+.token-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.badge.ok-badge { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.table.token-meta td:first-child { width: 120px; color: var(--muted); }
+.code.jwt { flex: none; max-height: 280px; }
+.app-settings { width: min(640px, 100%); }

@@ -131,6 +131,31 @@ public static class PostmanExporter
                     ("value", apiKey.Value),
                     ("in", apiKey.Location == ApiKeyLocation.Query ? "query" : "header"));
 
+            case OAuth2Auth o:
+                var grant = o.GrantType switch
+                {
+                    OAuth2GrantType.AuthorizationCode => o.UsePkce ? "authorization_code_with_pkce" : "authorization_code",
+                    OAuth2GrantType.Password => "password_credentials",
+                    _ => "client_credentials",
+                };
+                var values = new List<(string, string)>
+                {
+                    ("grant_type", grant), ("accessTokenUrl", o.TokenUrl), ("clientId", o.ClientId), ("clientSecret", o.ClientSecret),
+                    ("scope", o.Scope), ("client_authentication", o.ClientAuthentication == OAuth2ClientAuthentication.Body ? "body" : "header"),
+                    ("addTokenTo", "header"), ("headerPrefix", o.HeaderPrefix),
+                };
+                if (o.Audience.Length > 0) values.Add(("audience", o.Audience));
+                if (o.GrantType == OAuth2GrantType.AuthorizationCode)
+                {
+                    values.AddRange([("authUrl", o.AuthorizationUrl), ("redirect_uri", o.RedirectUri)]);
+                    if (o.UsePkce) values.Add(("challengeAlgorithm", "S256"));
+                }
+                if (o.GrantType == OAuth2GrantType.Password) values.AddRange([("username", o.Username), ("password", o.Password)]);
+                return Typed("oauth2", [.. values]);
+
+            case AzureCliAuth:
+                return Typed("noauth"); // Postman has no Azure CLI auth; set a bearer token there instead
+
             case WindowsAuth windows:
                 // Postman needs explicit credentials for NTLM; "current user" exports with them left blank.
                 return windows.UseCurrentUser

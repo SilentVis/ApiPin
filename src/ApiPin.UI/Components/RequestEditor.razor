@@ -122,6 +122,10 @@
             case "auth":
                 <AuthEditor Auth="Request.Auth" AuthChanged="OnAuthChanged" OnEdited="State.MarkDirty" Cache="Tab.AuthCache"
                             Inherited="InheritanceResolver.EffectiveAuth(new InheritAuth(), Chain)" HasParent="Chain.Count > 0" />
+                @if (ApiPin.Core.Auth.TokenService.Handles(EffectiveAuth.Auth))
+                {
+                    <TokenPanel Tab="Tab" />
+                }
                 break;
 
             case "body":

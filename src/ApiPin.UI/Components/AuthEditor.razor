@@ -13,6 +13,8 @@
             <option value="basic">Basic</option>
             <option value="bearer">Bearer token</option>
             <option value="apikey">API key</option>
+            <option value="oauth2">OAuth 2.0</option>
+            <option value="azurecli">Azure CLI token (Entra ID)</option>
             <option value="windows">Windows (Negotiate / NTLM)</option>
         </select>
     </label>
@@ -71,6 +73,58 @@
             </label>
             break;
 
+        case OAuth2Auth oauth:
+            <label class="field">
+                <span>Grant type</span>
+                <select value="@oauth.GrantType" @onchange="e => Set(() => oauth.GrantType = Enum.Parse<OAuth2GrantType>(Str(e)))">
+                    <option value="@OAuth2GrantType.ClientCredentials">Client credentials</option>
+                    <option value="@OAuth2GrantType.AuthorizationCode">Authorization code (browser sign-in)</option>
+                    <option value="@OAuth2GrantType.Password">Password (legacy)</option>
+                </select>
+            </label>
+            @if (oauth.GrantType == OAuth2GrantType.AuthorizationCode)
+            {
+                @Text("Authorization URL", oauth.AuthorizationUrl, v => oauth.AuthorizationUrl = v, "https://login.example.com/oauth2/authorize")
+            }
+            @Text("Token URL", oauth.TokenUrl, v => oauth.TokenUrl = v, "https://login.example.com/oauth2/token")
+            @Text("Client ID", oauth.ClientId, v => oauth.ClientId = v)
+            <SecretField Label="Client secret" Value="@oauth.ClientSecret" ValueChanged="v => Set(() => oauth.ClientSecret = v)" />
+            @Text("Scope", oauth.Scope, v => oauth.Scope = v, "space-separated, e.g. orders.read offline_access")
+            @Text("Audience", oauth.Audience, v => oauth.Audience = v, "optional")
+            @if (oauth.GrantType == OAuth2GrantType.Password)
+            {
+                @Text("Username", oauth.Username, v => oauth.Username = v)
+                <SecretField Label="Password" Value="@oauth.Password" ValueChanged="v => Set(() => oauth.Password = v)" />
+            }
+            @if (oauth.GrantType == OAuth2GrantType.AuthorizationCode)
+            {
+                @Text("Redirect URI", oauth.RedirectUri, v => oauth.RedirectUri = v, OAuth2Auth.DefaultRedirectUri)
+                <label class="check">
+                    <input type="checkbox" checked="@oauth.UsePkce" @onchange="e => Set(() => oauth.UsePkce = e.Value is true)" />
+                    Use PKCE (S256)
+                </label>
+            }
+            <label class="field">
+                <span>Client auth</span>
+                <select value="@oauth.ClientAuthentication" @onchange="e => Set(() => oauth.ClientAuthentication = Enum.Parse<OAuth2ClientAuthentication>(Str(e)))">
+                    <option value="@OAuth2ClientAuthentication.BasicHeader">Send as Basic auth header</option>
+                    <option value="@OAuth2ClientAuthentication.Body">Send in the request body</option>
+                </select>
+            </label>
+            @Text("Header prefix", oauth.HeaderPrefix, v => oauth.HeaderPrefix = v, "Bearer")
+            <p class="hint">
+                @(oauth.GrantType == OAuth2GrantType.AuthorizationCode
+                    ? $"Sign-in opens in your browser; ApiPin listens on the redirect URI for the response. Register {(string.IsNullOrWhiteSpace(oauth.RedirectUri) ? OAuth2Auth.DefaultRedirectUri : oauth.RedirectUri)} with the provider."
+                    : "The token is fetched on the first send, cached until it expires and refreshed automatically.")
+            </p>
+            break;
+
+        case AzureCliAuth azure:
+            @Text("Resource", azure.Resource, v => azure.Resource = v, "api://my-api, an app ID, or a scope ending in /.default")
+            @Text("Tenant", azure.Tenant, v => azure.Tenant = v, "optional: tenant ID or domain")
+            <p class="hint">Runs <code>az account get-access-token</code> as you; sign in once with <code>az login</code>. The token is cached until it expires.</p>
+            break;
+
         case WindowsAuth windows:
             <label class="check">
                 <input type="checkbox" checked="@windows.UseCurrentUser" @onchange="e => Set(() => windows.UseCurrentUser = e.Value is true)" />
@@ -127,7 +181,17 @@
         BearerAuth => "bearer",
         ApiKeyAuth => "apikey",
         WindowsAuth => "windows",
+        OAuth2Auth => "oauth2",
+        AzureCliAuth => "azurecli",
         _ => "none",
+    };
+
+    private RenderFragment Text(string label, string value, Action<string> set, string? placeholder = null) => __builder =>
+    {
+        <label class="field">
+            <span>@label</span>
+            <input value="@value" placeholder="@placeholder" spellcheck="false" autocomplete="off" @oninput="e => Set(() => set(Str(e)))" />
+        </label>
     };
 
     public static string Describe(AuthConfig auth) => auth switch
@@ -136,6 +200,8 @@
         BearerAuth => "a bearer token",
         ApiKeyAuth k => $"API key '{k.Key}'",
         WindowsAuth => "Windows auth",
+        OAuth2Auth o => $"OAuth 2.0 ({o.GrantType switch { OAuth2GrantType.AuthorizationCode => "authorization code", OAuth2GrantType.Password => "password", _ => "client credentials" }})",
+        AzureCliAuth => "an Azure CLI token",
         _ => "no auth",
     };
 
@@ -156,6 +222,8 @@
             "bearer" => typeof(BearerAuth),
             "apikey" => typeof(ApiKeyAuth),
             "windows" => typeof(WindowsAuth),
+            "oauth2" => typeof(OAuth2Auth),
+            "azurecli" => typeof(AzureCliAuth),
             _ => typeof(NoAuth),
         };
         var next = Cache is not null && Cache.TryGetValue(type, out var cached) ? cached : (AuthConfig)Activator.CreateInstance(type)!;

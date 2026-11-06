@@ -1,0 +1,144 @@
+@* The cached OAuth 2.0 / Azure CLI token for a tab's effective auth: status, claims, and Get new / Clear. *@
+@using System.Text.Json
+@using ApiPin.Core.Auth
+@inject WorkspaceState State
+@inject TokenService Tokens
+@implements IDisposable
+
+@{
+    var prepared = State.Prepare(Tab);
+    var auth = prepared.Request.Auth;
+    var token = Tokens.Cached(auth);
+}
+
+<div class="token-panel">
+    <div class="token-head">
+        <b>Access token</b>
+        @if (token is null)
+        {
+            <span class="muted">none yet: one is fetched when you send</span>
+        }
+        else if (token.IsExpired(DateTimeOffset.UtcNow))
+        {
+            <span class="badge warn">expired: renewed on the next send</span>
+        }
+        else
+        {
+            <span class="badge ok-badge">valid@(token.ExpiresAt is { } at ? $" for {Remaining(at)}" : "")</span>
+        }
+        <span class="spacer"></span>
+        <button class="btn ghost" disabled="@_busy" @onclick="() => GetNew(prepared.Request)">@(_busy ? "Getting token…" : "Get new token")</button>
+        @if (_busy && _cts is not null)
+        {
+            <button class="btn ghost" @onclick="() => _cts.Cancel()">Cancel</button>
+        }
+        <button class="btn ghost" disabled="@(token is null)" @onclick="() => Tokens.Clear(auth)">Clear token</button>
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="banner error">@_error</div>
+    }
+
+    @if (token is not null)
+    {
+        <table class="table token-meta">
+            <tbody>
+                <tr><td>From</td><td>@token.Source, @token.ObtainedAt.ToLocalTime().ToString("HH:mm:ss")</td></tr>
+                <tr><td>Type</td><td>@token.TokenType</td></tr>
+                @if (token.ExpiresAt is { } expires)
+                {
+                    <tr><td>Expires</td><td>@expires.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td></tr>
+                }
+                @if (token.Scope is { Length: > 0 } scope)
+                {
+                    <tr><td>Scope</td><td class="mono wrap">@scope</td></tr>
+                }
+                <tr><td>Refresh token</td><td>@(token.RefreshToken is null ? "no" : "yes")</td></tr>
+                <tr>
+                    <td>Token</td>
+                    <td class="mono wrap">
+                        @(_reveal ? token.AccessToken : Mask(token.AccessToken))
+                        <button class="link-btn" @onclick="() => _reveal = !_reveal">@(_reveal ? "hide" : "show")</button>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        @if (token.Jwt is { } jwt)
+        {
+            <h4 class="section-title">JWT claims</h4>
+            <pre class="code wrap jwt">@Pretty(jwt.Payload)</pre>
+            <details>
+                <summary class="muted">Header</summary>
+                <pre class="code wrap jwt">@Pretty(jwt.Header)</pre>
+            </details>
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public RequestTab Tab { get; set; } = null!;
+
+    private bool _busy;
+    private bool _reveal;
+    private string? _error;
+    private CancellationTokenSource? _cts;
+
+    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+    protected override void OnInitialized() => Tokens.Changed += OnTokensChanged;
+
+    public void Dispose()
+    {
+        Tokens.Changed -= OnTokensChanged;
+        _cts?.Cancel();
+    }
+
+    private void OnTokensChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task GetNew(RequestDefinition prepared)
+    {
+        _busy = true;
+        _error = null;
+        _cts = new CancellationTokenSource();
+        try
+        {
+            await Tokens.GetTokenAsync(prepared.Auth, prepared.Settings, forceNew: true, _cts.Token);
+        }
+        catch (AuthTokenException ex)
+        {
+            _error = $"{ex.Title}: {ex.Message}{(ex.Hint is null ? "" : " " + ex.Hint)}";
+        }
+        catch (OperationCanceledException)
+        {
+            _error = "Cancelled.";
+        }
+        finally
+        {
+            _busy = false;
+            _cts.Dispose();
+            _cts = null;
+        }
+    }
+
+    private static string Mask(string token) => token.Length <= 16 ? "••••••" : token[..8] + "…" + token[^6..];
+
+    private static string Pretty(JsonElement json)
+    {
+        var text = JsonSerializer.Serialize(json, Indented);
+        // Show exp / iat / nbf as dates too.
+        foreach (var claim in new[] { "exp", "iat", "nbf", "auth_time" })
+        {
+            if (json.ValueKind == JsonValueKind.Object && json.TryGetProperty(claim, out var v) && v.TryGetInt64(out var unix))
+                text = System.Text.RegularExpressions.Regex.Replace(text, $"(\"{claim}\": {unix},?)",
+                    $"$1  // {DateTimeOffset.FromUnixTimeSeconds(unix).ToLocalTime():yyyy-MM-dd HH:mm:ss}");
+        }
+        return text;
+    }
+
+    private static string Remaining(DateTimeOffset at)
+    {
+        var left = at - DateTimeOffset.UtcNow;
+        return left.TotalHours >= 1 ? $"{(int)left.TotalHours} h {left.Minutes} min" : left.TotalMinutes >= 1 ? $"{(int)left.TotalMinutes} min" : $"{Math.Max(0, (int)left.TotalSeconds)} s";
+    }
+}
