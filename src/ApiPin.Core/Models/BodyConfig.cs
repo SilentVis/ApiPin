@@ -11,6 +11,9 @@ namespace ApiPin.Core.Models;
 public abstract class BodyConfig
 {
     public abstract BodyConfig Clone();
+
+    /// <summary>A copy with <paramref name="map"/> applied to every text field (used to resolve variables).</summary>
+    public virtual BodyConfig Map(Func<string, string> map) => Clone();
 }
 
 public sealed class NoBody : BodyConfig
@@ -36,6 +39,8 @@ public sealed class RawBody : BodyConfig
     };
 
     public override BodyConfig Clone() => new RawBody { Language = Language, Content = Content };
+
+    public override BodyConfig Map(Func<string, string> map) => new RawBody { Language = Language, Content = map(Content) };
 }
 
 public sealed class FormUrlEncodedBody : BodyConfig
@@ -43,6 +48,11 @@ public sealed class FormUrlEncodedBody : BodyConfig
     public List<KeyValueItem> Fields { get; set; } = [];
 
     public override BodyConfig Clone() => new FormUrlEncodedBody { Fields = Fields.ConvertAll(f => f.Clone()) };
+
+    public override BodyConfig Map(Func<string, string> map) => new FormUrlEncodedBody
+    {
+        Fields = Fields.ConvertAll(f => new KeyValueItem { Enabled = f.Enabled, Key = map(f.Key), Value = map(f.Value), Description = f.Description }),
+    };
 }
 
 public enum MultipartPartKind { Text, File }
@@ -70,6 +80,15 @@ public sealed class MultipartBody : BodyConfig
     public List<MultipartPart> Parts { get; set; } = [];
 
     public override BodyConfig Clone() => new MultipartBody { Parts = Parts.ConvertAll(p => p.Clone()) };
+
+    public override BodyConfig Map(Func<string, string> map) => new MultipartBody
+    {
+        Parts = Parts.ConvertAll(p => new MultipartPart
+        {
+            Enabled = p.Enabled, Name = map(p.Name), Kind = p.Kind, Value = map(p.Value),
+            ContentType = p.ContentType is null ? null : map(p.ContentType),
+        }),
+    };
 }
 
 public sealed class BinaryFileBody : BodyConfig
@@ -78,4 +97,7 @@ public sealed class BinaryFileBody : BodyConfig
     public string? ContentType { get; set; }
 
     public override BodyConfig Clone() => new BinaryFileBody { FilePath = FilePath, ContentType = ContentType };
+
+    public override BodyConfig Map(Func<string, string> map) =>
+        new BinaryFileBody { FilePath = map(FilePath), ContentType = ContentType is null ? null : map(ContentType) };
 }

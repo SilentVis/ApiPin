@@ -45,12 +45,12 @@ without touching the engine or the host.
 
 | Project | What it is |
 |---|---|
-| `src/ApiPin.Core` | UI-free engine: request model, URL tools, request builder, auth, executor, body formatting |
+| `src/ApiPin.Core` | UI-free engine: request model, URL tools, `{{variable}}` resolver, request builder, auth, executor, body formatting |
 | `src/ApiPin.Storage` | JSON persistence: workspaces and collections on disk, open tabs, app settings, Postman export |
 | `src/ApiPin.UI` | Razor components, UI state, CSS and a small JS module |
 | `src/ApiPin.Desktop` | WPF window hosting the UI in a `BlazorWebView` |
 | `src/ApiPin.Web` | Blazor Server host: the same UI in any browser, served from `localhost` |
-| `tests/*` | Unit tests, plus integration tests against an in-process Kestrel server |
+| `tests/*` | Unit tests, plus integration tests that run every body and auth type against the EchoServer in-process |
 | `tools/ApiPin.EchoServer` | Answers any request with a JSON description of it, for manual testing |
 
 ## Download

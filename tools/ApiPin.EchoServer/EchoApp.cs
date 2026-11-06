@@ -24,6 +24,9 @@ public sealed record EchoServerOptions
 
     /// <summary>Don't print a line per request.</summary>
     public bool Quiet { get; init; }
+
+    /// <summary>Certificate for HTTPS instead of the dev certificate (tests use a self-signed one).</summary>
+    public X509Certificate2? Certificate { get; init; }
 }
 
 /// <summary>
@@ -48,12 +51,13 @@ public static class EchoApp
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton<OAuthServer>();
 
-        var certificate = options.HttpsPort > 0 ? FindDevCertificate() : null;
+        var certificate = options.Certificate ?? (options.HttpsPort > 0 ? FindDevCertificate() : null);
         builder.Services.AddSingleton(new EchoRuntime(certificate is not null));
         builder.WebHost.ConfigureKestrel(kestrel =>
         {
             Listen(kestrel, options.Host, options.HttpPort, null);
-            if (certificate is not null) Listen(kestrel, options.Host, options.HttpsPort, certificate);
+            if (certificate is not null && (options.HttpsPort > 0 || options.Certificate is not null))
+                Listen(kestrel, options.Host, options.HttpsPort, certificate);
         });
 
         var app = builder.Build();

@@ -8,6 +8,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ApiPin.Core.Tests/ApiPin.Core.Tests.csproj" />
+    <Project Path="tests/ApiPin.IntegrationTests/ApiPin.IntegrationTests.csproj" />
     <Project Path="tests/ApiPin.Storage.Tests/ApiPin.Storage.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">

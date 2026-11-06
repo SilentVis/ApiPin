@@ -260,11 +260,11 @@ Effort is in **focused dev-days** for one developer. Each phase ends with a usab
 
 - [x] Domain model (§3.3) with JSON round-trip tests
 - [x] URL parser that keeps `{{vars}}` and `:pathParams` intact; two-way sync between the URL and the query-params list
-- [ ] `VariableResolver`: scopes, dynamic vars, nesting, cycle detection, list of unresolved names
+- [x] `VariableResolver`: scopes, dynamic vars, nesting, cycle detection, list of unresolved names (scopes: runtime → environment → folders → collection → globals; dynamic vars also include `$randomUUID` and `$randomAlphaNumeric`)
 - [x] `HttpRequestBuilder`: method, URL encoding, headers (including restricted ones such as `Host`), all body types with correct `Content-Type` and multipart boundaries
 - [x] Auth providers: None, Basic, Bearer, API Key (header or query)
 - [x] `HttpExecutor`: handler pool, timeout, cancellation, decompression, timings, size, error mapping (DNS failure, connection refused, TLS error, timeout → friendly messages)
-- [ ] Integration tests against EchoServer, covering every body type and auth type (executor tests run against an in-process Kestrel server; body/auth types are covered by builder unit tests only)
+- [x] Integration tests against EchoServer, covering every body type and auth type (`tests/ApiPin.IntegrationTests` starts the real EchoServer in-process, with HTTPS on a throwaway self-signed certificate; Windows auth is not covered because the EchoServer has no Negotiate endpoint)
 
 **Exit criteria:** a unit/integration test can build any request from a `RequestDefinition` and get a correct `ResponseResult`. Core coverage ≥ 80%.
 
