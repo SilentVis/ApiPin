@@ -310,6 +310,7 @@
                     @if (folder is RequestCollection collection)
                     {
                         @Menu(
+                            ("Run collection…", () => { Overlays.Show(Overlay.Runner, folder.Id.ToString()); return Task.CompletedTask; }),
                             ("New request", () => { NewRequest(folder); return Task.CompletedTask; }),
                             ("New folder", () => NewFolder(folder)),
                             ("Settings: headers, auth, variables…", () => Actions.EditSettingsAsync(folder)),
@@ -320,6 +321,7 @@
                     else
                     {
                         @Menu(
+                            ("Run folder…", () => { Overlays.Show(Overlay.Runner, folder.Id.ToString()); return Task.CompletedTask; }),
                             ("New request", () => { NewRequest(folder); return Task.CompletedTask; }),
                             ("New folder", () => NewFolder(folder)),
                             ("Settings: headers, auth, variables…", () => Actions.EditSettingsAsync(folder)),

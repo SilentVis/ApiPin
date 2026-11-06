@@ -7,9 +7,9 @@ A lightweight, local-first alternative to Postman for building and sending HTTP 
 
 ## Status
 
-**v0.5 — everything for daily use.** Requests, collections, environments with encrypted secrets, OAuth 2.0 and the
-other auth types, history, imports (Postman, OpenAPI, cURL), code snippets and a command palette.
-Captures, assertions and a CLI runner (Phase 7) are next.
+**v0.6 — daily use plus chaining and CI.** Requests, collections, environments with encrypted secrets, OAuth 2.0 and
+the other auth types, history, imports (Postman, OpenAPI, cURL), code snippets, a command palette, and captures,
+assertions and a collection runner in the app and on the command line. Packaging (Phase 8) is next.
 See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the architecture and roadmap.
 
 What works today:
@@ -45,6 +45,10 @@ What works today:
 - **GraphQL** bodies (query + variables); a **cookie jar** per environment (🍪 in the top bar)
 - **Command palette** (`Ctrl+K`) for commands, saved requests and environments; `Ctrl+/` lists the shortcuts;
   drag tabs to reorder, right-click them to close others, `Ctrl+Shift+T` reopens a closed one
+- **Tests:** in a request's **Tests** tab, *captures* set variables from the response (`$.access_token` → `{{token}}`)
+  and *assertions* check it (status, headers, JSONPath, response time, body, JSON Schema); results show in the
+  response's Tests tab. **Run** a collection or folder from its `⋯` menu to send its requests in order with a summary,
+  or use `apipin run` in CI (below)
 - **Postman export:** any collection to Postman Collection v2.1 (`<name>.postman_collection.json`), which Postman,
   Insomnia and Bruno can import
 - **Tabs** are kept across restarts in `%APPDATA%\ApiPin\scratch-tabs.json`; dark/light theme follows Windows
@@ -192,8 +196,9 @@ Secret variables come from your ApiPin secret store when it's there; in CI, pass
 `APIPIN_VAR_<key>` environment variables. Run `apipin --help` for every option. The sample needs the echo server
 running (below).
 
-Captures and assertions live in the request files (`captures` and `assertions`); see
-`samples/echo-api-tests/collections/items-api` for examples. Editing them in the app comes next.
+Captures and assertions are edited in the app's Tests tab and saved in the request files; see
+`samples/echo-api-tests/collections/items-api` for examples. The runner dialog in the app shows the matching
+`apipin run` command for the folder you're running.
 
 ### Echo server
 

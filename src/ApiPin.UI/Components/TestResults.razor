@@ -1,0 +1,55 @@
+@* Assertion and capture results of one response (also used for each step of a run). *@
+@using ApiPin.Core.Testing
+
+@if (Report is null || !Report.HasAny)
+{
+    <p class="hint">No assertions or captures for this request. Add them in the request's <b>Tests</b> tab.</p>
+}
+else
+{
+    <div class="test-results">
+        @if (Report.Assertions.Count > 0)
+        {
+            <div class="test-summary @(Report.Assertions.All(a => a.Passed) ? "pass" : "fail")">
+                @Report.Passed of @Report.Assertions.Count assertion@(Report.Assertions.Count == 1 ? "" : "s") passed
+            </div>
+            @foreach (var a in Report.Assertions)
+            {
+                <div class="test-row @(a.Passed ? "pass" : "fail")">
+                    <span class="test-mark">@(a.Passed ? "✓" : "✗")</span>
+                    <span class="test-name mono">@a.Description</span>
+                    @if (!a.Passed && a.Message is not null)
+                    {
+                        <span class="test-message">@a.Message</span>
+                    }
+                </div>
+            }
+        }
+        @if (Report.Captures.Count > 0)
+        {
+            <h4 class="section-title">Captured</h4>
+            @foreach (var c in Report.Captures)
+            {
+                <div class="test-row @(c.Succeeded ? "pass" : "fail")">
+                    <span class="test-mark">@(c.Succeeded ? "→" : "✗")</span>
+                    <span class="test-name mono">{{@c.Rule.Variable}}</span>
+                    @if (c.Succeeded)
+                    {
+                        <span class="mono wrap test-value">= @Shorten(c.Value!)</span>
+                        <span class="muted">(@(c.Rule.Target == ApiPin.Core.Models.CaptureTarget.Environment ? "environment" : "runtime"))</span>
+                    }
+                    else
+                    {
+                        <span class="test-message">@c.Error</span>
+                    }
+                </div>
+            }
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public TestReport? Report { get; set; }
+
+    private static string Shorten(string value) => value.Length > 120 ? value[..120] + "…" : value;
+}

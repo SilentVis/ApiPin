@@ -86,6 +86,9 @@
         case Overlay.Shortcuts:
             <ShortcutsDialog />
             break;
+        case Overlay.Runner:
+            <RunnerDialog />
+            break;
         case Overlay.Palette:
             <CommandPalette Commands="PaletteCommands()" />
             break;
@@ -186,6 +189,7 @@
             new("Reload workspace from disk", () => Do(State.Reload)),
             new("Settings", () => Do(() => Overlays.Show(Overlay.Settings))),
             new("Keyboard shortcuts", () => Do(() => Overlays.Show(Overlay.Shortcuts)), Shortcut: "Ctrl+/"),
+            new("Clear runtime variables (captured values)", () => Do(State.ClearRuntimeVariables)),
             new("Toggle sidebar", ToggleSidebar),
             new("Toggle side-by-side layout", ToggleLayout),
             new("No environment", () => Do(() => State.SetActiveEnvironment(null)), Group: "Environment"),
@@ -197,6 +201,7 @@
                     Detail: env.Id == ws.ActiveEnvironmentId ? "active" : null)));
             foreach (var collection in ws.OrderedCollections)
             {
+                commands.Add(new(collection.Name, () => Do(() => Overlays.Show(Overlay.Runner, collection.Id.ToString())), Group: "Run"));
                 foreach (var (request, path) in RequestsWithPath(collection, collection.Name))
                     commands.Add(new(string.IsNullOrWhiteSpace(request.Name) ? request.Url : request.Name, () => Do(() => State.Open(request)),
                         Group: request.Method.ToUpperInvariant(), Detail: path));

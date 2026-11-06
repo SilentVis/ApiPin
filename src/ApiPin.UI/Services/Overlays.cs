@@ -1,6 +1,6 @@
 namespace ApiPin.UI.Services;
 
-public enum Overlay { None, Environments, Settings, Import, Snippet, Cookies, Palette, Shortcuts }
+public enum Overlay { None, Environments, Settings, Import, Snippet, Cookies, Palette, Shortcuts, Runner }
 
 /// <summary>Which full-window dialog is open (one at a time); <c>ApiPinApp</c> renders it.</summary>
 public sealed class Overlays

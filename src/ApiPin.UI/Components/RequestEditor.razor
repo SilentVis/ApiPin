@@ -79,6 +79,7 @@
         @Section("auth", "Auth", EffectiveAuth.Auth is NoAuth ? 0 : 1, dot: true)
         @Section("body", "Body", Request.Body is NoBody ? 0 : 1, dot: true)
         @Section("settings", "Settings", Request.Settings.VerifyTls ? 0 : 1, dot: true)
+        @Section("tests", "Tests", Request.Captures.Count(c => c.Enabled) + Request.Assertions.Count(a => a.Enabled))
         @Section("resolved", "Resolved", 0)
     </nav>
 
@@ -136,6 +137,10 @@
 
             case "settings":
                 <SettingsEditor Tab="Tab" />
+                break;
+
+            case "tests":
+                <TestsEditor Tab="Tab" />
                 break;
 
             case "resolved":

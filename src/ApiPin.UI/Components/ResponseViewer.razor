@@ -54,6 +54,12 @@
             @Section("headers", "Headers", r.Headers.Count)
             @Section("cookies", "Cookies", r.Cookies.Count)
             @Section("timings", "Timings", null)
+            @if (Tab.TestReport is { HasAny: true } tests)
+            {
+                <button class="subtab @(Tab.ResponseSection == "tests" ? "active" : null) @(tests.AllPassed ? "tests-pass" : "tests-fail")" @onclick='() => Tab.ResponseSection = "tests"'>
+                    Tests <span class="count">@(tests.Assertions.Count > 0 ? $"{tests.Passed}/{tests.Assertions.Count}" : "✓")</span>
+                </button>
+            }
             @Section("request", "Request", null)
         </nav>
 
@@ -94,6 +100,10 @@
                         <div class="timing-total">Total <b>@Display.Duration(r.Timings.Total)</b></div>
                         <p class="hint">Waiting includes DNS lookup, connecting and the TLS handshake when a new connection was needed.</p>
                     </div>
+                    break;
+
+                case "tests":
+                    <TestResults Report="Tab.TestReport" />
                     break;
 
                 case "request" when r.Request is { } sent:

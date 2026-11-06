@@ -1,0 +1,208 @@
+@* Runs a collection or folder in order with the active environment, showing each request's result as it comes. *@
+@using System.Text
+@using ApiPin.Core.Testing
+@inject WorkspaceState State
+@inject UiActions Actions
+@inject Overlays Overlays
+@implements IDisposable
+
+<div class="modal-backdrop">
+    <div class="modal wide runner" role="dialog" aria-modal="true" aria-label="Collection runner" @onkeydown="OnKey">
+        @if (_folder is null)
+        {
+            <h3>Run</h3>
+            <p class="hint">That folder no longer exists.</p>
+            <div class="modal-actions"><button class="btn" @onclick="Overlays.Close">Close</button></div>
+        }
+        else
+        {
+            <h3>Run: @string.Join(" / ", State.ChainOf(_folder).Select(f => f.Name))</h3>
+            <p class="muted">
+                @_items.Count request@(_items.Count == 1 ? "" : "s") in order, with @(State.ActiveEnvironment?.Name is { } env ? $"the {env} environment" : "no environment").
+                Captured variables carry over from one request to the next.
+            </p>
+
+            <div class="runner-options">
+                <label class="inline">Iterations <input type="number" class="narrow" min="1" max="1000" value="@_iterations" disabled="@_running" @onchange="e => _iterations = Int(e, _iterations, 1, 1000)" /></label>
+                <label class="inline">Delay <input type="number" class="narrow" min="0" max="60000" step="100" value="@_delay" disabled="@_running" @onchange="e => _delay = Int(e, _delay, 0, 60000)" /> ms</label>
+                <label class="check"><input type="checkbox" checked="@_bail" disabled="@_running" @onchange="e => _bail = e.Value is true" /> Stop at the first failure</label>
+                <span class="spacer"></span>
+                @if (_running)
+                {
+                    <button class="btn danger" @onclick="() => _cts?.Cancel()">Stop</button>
+                }
+                else
+                {
+                    <button class="btn primary" disabled="@(_items.Count == 0)" @onclick="Run">@(_result is null ? "Run" : "Run again")</button>
+                }
+            </div>
+
+            @if (_running || _result is not null)
+            {
+                var total = _items.Count * _runIterations;
+                <div class="runner-progress">
+                    <div class="runner-bar"><span style="width:@(total == 0 ? 0 : _steps.Count * 100 / total)%" class="@(_steps.All(s => s.Passed) ? "pass" : "fail")"></span></div>
+                    <span class="muted">@_steps.Count / @total</span>
+                </div>
+            }
+
+            <div class="runner-steps">
+                @foreach (var (step, index) in _steps.Select((s, i) => (s, i)))
+                {
+                    var open = _open.Contains(index);
+                    <div class="runner-step @(step.Passed ? "pass" : "fail")" @onclick="() => Toggle(index)">
+                        <span class="test-mark">@(step.Passed ? "✓" : "✗")</span>
+                        @if (_runIterations > 1)
+                        {
+                            <span class="muted">#@step.Iteration</span>
+                        }
+                        <span class="method-badge @Display.MethodClass(step.Response.Request?.Method ?? step.Item.Request.Method)">@Display.ShortMethod(step.Response.Request?.Method ?? step.Item.Request.Method)</span>
+                        <span class="runner-name">@step.Item.Name</span>
+                        <span class="muted runner-url">@step.Response.Request?.Url</span>
+                        <span class="spacer"></span>
+                        @if (step.Response.Error is { } error)
+                        {
+                            <span class="history-status s-text-error">@error.Title</span>
+                        }
+                        else
+                        {
+                            <span class="history-status @Display.StatusClass(step.Response.StatusCode)">@step.Response.StatusCode</span>
+                        }
+                        <span class="muted runner-time">@Display.Duration(step.Response.Timings.Total)</span>
+                        @if (step.Tests.Assertions.Count > 0)
+                        {
+                            <span class="count">@step.Tests.Passed/@step.Tests.Assertions.Count</span>
+                        }
+                    </div>
+                    @if (open)
+                    {
+                        <div class="runner-detail">
+                            @if (step.Response.Error is { } e)
+                            {
+                                <div class="banner error">@e.Title: @e.Detail</div>
+                            }
+                            @if (step.Variables.Unresolved.Count > 0)
+                            {
+                                <div class="banner warn">Undefined variables: @string.Join(", ", step.Variables.Unresolved.Select(n => "{{" + n + "}}"))</div>
+                            }
+                            <TestResults Report="step.Tests" />
+                            <button class="link-btn" @onclick="() => OpenStep(step)" @onclick:stopPropagation="true">Open this response in a tab</button>
+                        </div>
+                    }
+                }
+            </div>
+
+            @if (_result is { } r)
+            {
+                <div class="test-summary @(r.AllPassed ? "pass" : "fail")">
+                    @(r.AllPassed ? "Passed" : r.Cancelled ? "Stopped" : "Failed"):
+                    @r.Requests requests (@r.FailedRequests failed), @r.Assertions assertions (@r.FailedAssertions failed) in @Display.Duration(r.Duration)
+                    @(r.Stopped ? " · stopped at the first failure" : "")
+                </div>
+            }
+
+            <div class="modal-actions">
+                @if (_result is { } done)
+                {
+                    <button class="btn ghost" @onclick="() => Export(done, junit: true)">Save JUnit XML…</button>
+                    <button class="btn ghost" @onclick="() => Export(done, junit: false)">Save JSON…</button>
+                }
+                <span class="spacer"></span>
+                <span class="muted runner-cli" title="The same run from a terminal or CI">@CliLine()</span>
+                <button class="btn" disabled="@_running" @onclick="Overlays.Close">Close</button>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private RequestFolder? _folder;
+    private List<RunItem> _items = [];
+    private readonly List<RunStep> _steps = [];
+    private readonly HashSet<int> _open = [];
+    private RunResult? _result;
+    private CancellationTokenSource? _cts;
+    private bool _running;
+    private int _iterations = 1, _delay, _runIterations = 1;
+    private bool _bail;
+
+    protected override void OnInitialized()
+    {
+        var id = Guid.TryParse(Overlays.Argument, out var g) ? g : Guid.Empty;
+        _folder = State.Workspace?.Collections.SelectMany(c => c.SelfAndDescendants()).FirstOrDefault(f => f.Id == id);
+        if (_folder is not null) _items = CollectionRunner.Plan(_folder);
+    }
+
+    public void Dispose() => _cts?.Cancel();
+
+    private static int Int(ChangeEventArgs e, int fallback, int min, int max) =>
+        int.TryParse(e.Value?.ToString(), out var v) ? Math.Clamp(v, min, max) : fallback;
+
+    private async Task Run()
+    {
+        if (_folder is null) return;
+        _steps.Clear();
+        _open.Clear();
+        _result = null;
+        _running = true;
+        _runIterations = _iterations;
+        _cts = new CancellationTokenSource();
+        var progress = new Progress<RunStep>(step => _ = InvokeAsync(() =>
+        {
+            _steps.Add(step);
+            if (!step.Passed && _open.Count < 3) _open.Add(_steps.Count - 1); // show the first failures right away
+            StateHasChanged();
+        }));
+        try
+        {
+            _result = await State.RunAsync(_folder, new RunOptions { Iterations = _iterations, DelayMs = _delay, StopOnFailure = _bail }, progress, _cts.Token);
+            await Task.Yield(); // let queued progress updates land first
+        }
+        finally
+        {
+            _running = false;
+            _cts.Dispose();
+            _cts = null;
+        }
+    }
+
+    private void Toggle(int index)
+    {
+        if (!_open.Remove(index)) _open.Add(index);
+    }
+
+    private void OpenStep(RunStep step)
+    {
+        var tab = State.OpenNew(step.Item.Request.Clone(), step.Response);
+        tab.TestReport = step.Tests;
+        tab.ResponseSection = step.Tests.HasAny ? "tests" : "body";
+        Overlays.Close();
+    }
+
+    private async Task Export(RunResult result, bool junit)
+    {
+        var name = Slug(_folder?.Name ?? "run");
+        var text = junit ? RunReporters.JUnit(result, _folder?.Name ?? "ApiPin") : RunReporters.Json(result);
+        await Actions.SaveFileAsync(junit ? $"{name}-results.xml" : $"{name}-results.json", junit ? "application/xml" : "application/json", Encoding.UTF8.GetBytes(text));
+    }
+
+    private static string Slug(string name) => ApiPin.Storage.Slug.From(name, "run");
+
+    private string CliLine()
+    {
+        if (_folder is null || State.Workspace is null) return "";
+        var chain = State.ChainOf(_folder);
+        var parts = new List<string> { "apipin run", Quote(State.Workspace.Root), "-c", Quote(chain[0].Name) };
+        if (chain.Count > 1) parts.AddRange(["-f", Quote(string.Join("/", chain.Skip(1).Select(f => f.Name)))]);
+        if (State.ActiveEnvironment is { } env) parts.AddRange(["-e", Quote(env.Name)]);
+        if (_iterations > 1) parts.AddRange(["-n", _iterations.ToString()]);
+        return string.Join(" ", parts);
+    }
+
+    private static string Quote(string s) => s.Contains(' ') ? $"\"{s}\"" : s;
+
+    private void OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && !_running) Overlays.Close();
+    }
+}
