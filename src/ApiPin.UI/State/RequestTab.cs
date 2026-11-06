@@ -1,10 +1,11 @@
 using ApiPin.Core.Models;
+using ApiPin.Core.Variables;
 
 namespace ApiPin.UI.State;
 
 public sealed class RequestTab(RequestDefinition request)
 {
-    public RequestDefinition Request { get; } = request;
+    public RequestDefinition Request { get; internal set; } = request;
     public ResponseResult? Response { get; internal set; }
     public bool IsSending { get; internal set; }
     internal CancellationTokenSource? Sending { get; set; }
@@ -14,6 +15,12 @@ public sealed class RequestTab(RequestDefinition request)
 
     /// <summary>True when the tab has edits that are not saved to its collection yet.</summary>
     public bool IsModified { get; internal set; }
+
+    /// <summary>The saved request changed on disk (e.g. a git pull) while this tab had unsaved edits.</summary>
+    public bool HasConflict { get; internal set; }
+
+    /// <summary>Variable problems found when the response was sent (unresolved or cyclic names).</summary>
+    public ResolveReport? LastReport { get; internal set; }
 
     public string RequestSection { get; set; } = "params";
     public string ResponseSection { get; set; } = "body";

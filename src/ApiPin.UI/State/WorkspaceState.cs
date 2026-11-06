@@ -1,6 +1,8 @@
 using System.Text.Json;
+using ApiPin.Core.Execution;
 using ApiPin.Core.Http;
 using ApiPin.Core.Models;
+using ApiPin.Core.Variables;
 using ApiPin.Storage;
 using ApiPin.Storage.Postman;
 using Microsoft.Extensions.Logging;
@@ -10,14 +12,14 @@ namespace ApiPin.UI.State;
 /// <summary>A workspace folder given at startup; it is opened instead of the last one and not remembered.</summary>
 public sealed record WorkspaceStartup(string? Path);
 
-/// <summary>Where a saved request lives in the open workspace.</summary>
+/// <summary>Where a saved request lives in the open workspace. <see cref="Path"/> runs from the collection to the parent folder.</summary>
 public sealed record SavedLocation(RequestDefinition Request, RequestFolder Parent, RequestCollection Collection, IReadOnlyList<RequestFolder> Path);
 
 /// <summary>
 /// Open tabs, the open workspace (collections on disk) and sending.
 /// Call <see cref="MarkDirty"/> after every edit; it refreshes the UI and saves the tabs shortly after.
 /// </summary>
-public sealed class WorkspaceState
+public sealed class WorkspaceState : IDisposable
 {
     private static readonly TimeSpan SaveDelay = TimeSpan.FromMilliseconds(800);
 
@@ -27,6 +29,8 @@ public sealed class WorkspaceState
     private readonly ILogger<WorkspaceState> _log;
     private CancellationTokenSource? _pendingSave;
     private WorkspaceStore? _store;
+    private WorkspaceWatcher? _watcher;
+    private volatile bool _externalChangePending;
 
     public WorkspaceState(ScratchTabStore scratch, AppSettingsStore settings, IHttpExecutor executor, WorkspaceStartup startup, ILogger<WorkspaceState> log)
     {
@@ -54,6 +58,16 @@ public sealed class WorkspaceState
 
     /// <summary>Raised after any change that should re-render the UI.</summary>
     public event Action? Changed;
+
+    /// <summary>
+    /// Raised on a background thread when workspace files changed outside ApiPin. The UI calls
+    /// <see cref="ApplyExternalChanges"/> on its own thread in response.
+    /// </summary>
+    public event Action? ExternalChange;
+
+    /// <summary>Recently opened workspace folders other than the open one.</summary>
+    public IReadOnlyList<string> RecentWorkspaces =>
+        _settings.Load().RecentWorkspaces.Where(p => !string.Equals(p, _store?.Root, StringComparison.OrdinalIgnoreCase)).ToList();
 
     // ---------- Tabs ----------
 
@@ -108,6 +122,17 @@ public sealed class WorkspaceState
         ScheduleSave();
     }
 
+    // ---------- Sending ----------
+
+    /// <summary>The folders a tab's request inherits from: collection first, down to its folder. Empty for an unsaved tab.</summary>
+    public IReadOnlyList<RequestFolder> ChainFor(RequestTab tab) => Find(tab.Request.Id)?.Path ?? [];
+
+    /// <summary>The variables in effect for a tab (folder and collection variables included).</summary>
+    public VariableContext VariablesFor(RequestTab tab) => InheritanceResolver.WithFolderVariables(BaseVariables(), ChainFor(tab));
+
+    /// <summary>The request as it will be sent: inherited auth and headers applied, variables resolved.</summary>
+    public PreparedRequest Prepare(RequestTab tab) => RequestPreparer.Prepare(tab.Request, ChainFor(tab), BaseVariables());
+
     public async Task SendAsync(RequestTab tab)
     {
         if (tab.IsSending) return;
@@ -119,7 +144,9 @@ public sealed class WorkspaceState
         try
         {
             // Send a snapshot, so edits made while waiting don't change the request in flight.
-            tab.Response = await _executor.SendAsync(tab.Request.Clone(newId: false), cts.Token);
+            var prepared = Prepare(tab);
+            tab.LastReport = prepared.Report;
+            tab.Response = await _executor.SendAsync(prepared.Request, cts.Token);
         }
         finally
         {
@@ -131,6 +158,9 @@ public sealed class WorkspaceState
 
     public void Cancel(RequestTab tab) => tab.Sending?.Cancel();
 
+    /// <summary>Runtime, environment and global variables. Collection and folder variables are added per request.</summary>
+    private static VariableContext BaseVariables() => VariableContext.Empty;
+
     // ---------- Workspace ----------
 
     /// <summary>Opens (or creates) a workspace folder and links open tabs to its saved requests.</summary>
@@ -140,9 +170,10 @@ public sealed class WorkspaceState
         {
             var store = new WorkspaceStore(path);
             Workspace = store.Load();
+            Watch(store); // a new store per load, and the watcher asks it which changes were its own
             _store = store;
             Error = null;
-            if (remember) _settings.Save(new AppSettings { LastWorkspace = store.Root });
+            if (remember) _settings.Save(_settings.Load().WithWorkspace(store.Root));
             _log.LogInformation("Opened workspace {Root}: {Collections} collections, {Problems} skipped files",
                 store.Root, Workspace.Collections.Count, Workspace.Problems.Count);
         }
@@ -160,10 +191,44 @@ public sealed class WorkspaceState
         return true;
     }
 
+    public void ForgetRecent(string path)
+    {
+        _settings.Save(_settings.Load().WithoutRecent(path));
+        Changed?.Invoke();
+    }
+
     /// <summary>Re-reads the workspace from disk, e.g. after a git pull.</summary>
     public void Reload()
     {
         if (_store is not null) OpenWorkspace(_store.Root, remember: false);
+    }
+
+    /// <summary>Reloads after <see cref="ExternalChange"/>; does nothing if another UI session already did.</summary>
+    public void ApplyExternalChanges()
+    {
+        if (!_externalChangePending) return;
+        _externalChangePending = false;
+        _log.LogInformation("Workspace files changed on disk; reloading");
+        Reload();
+    }
+
+    private void Watch(WorkspaceStore store)
+    {
+        _watcher?.Dispose();
+        _watcher = null;
+        try
+        {
+            _watcher = new WorkspaceWatcher(store);
+            _watcher.Changed += () =>
+            {
+                _externalChangePending = true;
+                ExternalChange?.Invoke();
+            };
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or PlatformNotSupportedException)
+        {
+            _log.LogWarning(ex, "Can't watch {Root} for changes; use Reload from disk after a git pull", store.Root);
+        }
     }
 
     public void DismissError()
@@ -185,6 +250,14 @@ public sealed class WorkspaceState
     /// <summary>The folder that contains <paramref name="folder"/>, or null for a collection.</summary>
     public RequestFolder? ParentOf(RequestFolder folder) =>
         Workspace?.Collections.SelectMany(c => c.SelfAndDescendants()).FirstOrDefault(f => f.Folders.Contains(folder));
+
+    /// <summary>The path from the collection down to <paramref name="folder"/> itself.</summary>
+    public IReadOnlyList<RequestFolder> ChainOf(RequestFolder folder)
+    {
+        var chain = new List<RequestFolder> { folder };
+        for (var parent = ParentOf(folder); parent is not null; parent = ParentOf(parent)) chain.Insert(0, parent);
+        return chain;
+    }
 
     public bool IsSaved(RequestTab tab) => tab.SavedJson is not null;
 
@@ -219,6 +292,7 @@ public sealed class WorkspaceState
             location.Parent.Requests[location.Parent.Requests.IndexOf(location.Request)] = copy;
             tab.Request.Seq = copy.Seq;
             tab.SavedJson = Json(copy);
+            tab.HasConflict = false;
         });
         return true;
     }
@@ -237,7 +311,23 @@ public sealed class WorkspaceState
             tab.Request.Name = copy.Name;
             tab.Request.Seq = copy.Seq;
             tab.SavedJson = Json(copy);
+            tab.HasConflict = false;
         });
+    }
+
+    /// <summary>Replaces a conflicted tab's edits with the version on disk.</summary>
+    public void UseVersionOnDisk(RequestTab tab)
+    {
+        if (Find(tab.Request.Id) is { } location) tab.Request = location.Request.Clone(newId: false);
+        tab.HasConflict = false;
+        MarkDirty();
+    }
+
+    /// <summary>Keeps a conflicted tab's edits; the next save overwrites the file.</summary>
+    public void KeepMyVersion(RequestTab tab)
+    {
+        tab.HasConflict = false;
+        MarkDirty();
     }
 
     public RequestCollection? CreateCollection(string name)
@@ -279,12 +369,15 @@ public sealed class WorkspaceState
     {
         var previous = folder.Name;
         folder.Name = name;
-        var ok = Run(() =>
-        {
-            if (folder is RequestCollection collection) _store!.SaveCollection(collection);
-            else _store!.SaveFolder(ParentOf(folder)!, folder);
-        });
-        if (!ok) folder.Name = previous;
+        if (!Run(() => SaveFolderOrCollection(folder))) folder.Name = previous;
+    }
+
+    /// <summary>Saves headers, auth, variables and description of a folder or collection.</summary>
+    public void UpdateSettings(RequestFolder folder, FolderSettings settings)
+    {
+        var previous = folder.GetSettings();
+        folder.ApplySettings(settings);
+        if (!Run(() => SaveFolderOrCollection(folder))) folder.ApplySettings(previous);
     }
 
     public void Rename(RequestDefinition saved, string name)
@@ -343,6 +436,74 @@ public sealed class WorkspaceState
         foreach (var tab in Tabs) Relink(tab);
     }
 
+    // ---------- Moving and reordering ----------
+
+    /// <summary>Moves a saved request into <paramref name="target"/> at <paramref name="index"/> among its requests.</summary>
+    public void Move(RequestDefinition saved, RequestFolder target, int index)
+    {
+        if (Find(saved.Id) is not { } location) return;
+        var ok = Run(() =>
+        {
+            var ordered = target.OrderedRequests.Where(r => !ReferenceEquals(r, saved)).ToList();
+            ordered.Insert(Math.Clamp(index, 0, ordered.Count), saved);
+            location.Parent.Requests.Remove(saved);
+            target.Requests.Add(saved);
+
+            for (var i = 0; i < ordered.Count; i++)
+            {
+                var moved = ReferenceEquals(ordered[i], saved) && !ReferenceEquals(location.Parent, target);
+                if (ordered[i].Seq == i && !moved) continue;
+                ordered[i].Seq = i;
+                _store!.SaveRequest(target, ordered[i]);
+            }
+        });
+        if (!ok) Reload();
+    }
+
+    /// <summary>True when <paramref name="folder"/> may move into <paramref name="target"/> (not into itself or below itself).</summary>
+    public static bool CanMove(RequestFolder folder, RequestFolder target) =>
+        folder is not RequestCollection && !folder.SelfAndDescendants().Contains(target);
+
+    /// <summary>Moves a folder into <paramref name="target"/> at <paramref name="index"/> among its folders.</summary>
+    public void Move(RequestFolder folder, RequestFolder target, int index)
+    {
+        if (!CanMove(folder, target) || ParentOf(folder) is not { } parent) return;
+        var ok = Run(() =>
+        {
+            var ordered = target.OrderedFolders.Where(f => !ReferenceEquals(f, folder)).ToList();
+            ordered.Insert(Math.Clamp(index, 0, ordered.Count), folder);
+            parent.Folders.Remove(folder);
+            target.Folders.Add(folder);
+
+            for (var i = 0; i < ordered.Count; i++)
+            {
+                var moved = ReferenceEquals(ordered[i], folder) && !ReferenceEquals(parent, target);
+                if (ordered[i].Seq == i && !moved) continue;
+                ordered[i].Seq = i;
+                _store!.SaveFolder(target, ordered[i]);
+            }
+        });
+        if (!ok) Reload();
+    }
+
+    /// <summary>Moves a collection to <paramref name="index"/> in the sidebar.</summary>
+    public void Move(RequestCollection collection, int index)
+    {
+        if (Workspace is null) return;
+        var ok = Run(() =>
+        {
+            var ordered = Workspace.OrderedCollections.Where(c => !ReferenceEquals(c, collection)).ToList();
+            ordered.Insert(Math.Clamp(index, 0, ordered.Count), collection);
+            for (var i = 0; i < ordered.Count; i++)
+            {
+                if (ordered[i].Seq == i) continue;
+                ordered[i].Seq = i;
+                _store!.SaveCollection(ordered[i]);
+            }
+        });
+        if (!ok) Reload();
+    }
+
     public static (string FileName, string Json) ExportPostman(RequestCollection collection) =>
         (PostmanExporter.FileName(collection), PostmanExporter.Export(collection));
 
@@ -382,18 +543,48 @@ public sealed class WorkspaceState
     private (List<RequestDefinition> Tabs, Guid ActiveId) Snapshot() =>
         (Tabs.Select(t => t.Request.Clone(newId: false)).ToList(), Active.Request.Id);
 
+    public void Dispose()
+    {
+        _watcher?.Dispose();
+        _pendingSave?.Cancel();
+    }
+
     // ---------- Helpers ----------
 
+    /// <summary>
+    /// Re-links a tab to its saved request after the workspace was (re)loaded. When the file changed on disk,
+    /// an unedited tab picks up the new version and an edited one is flagged as a conflict.
+    /// </summary>
     private void Relink(RequestTab tab)
     {
-        tab.SavedJson = Find(tab.Request.Id) is { } location ? Json(location.Request) : null;
+        var location = Find(tab.Request.Id);
+        var onDisk = location is null ? null : Json(location.Request);
+        if (location is not null && tab.SavedJson is not null && onDisk != tab.SavedJson)
+        {
+            if (tab.IsModified) tab.HasConflict = true;
+            else tab.Request = location.Request.Clone(newId: false);
+        }
+        if (location is null) tab.HasConflict = false;
+        tab.SavedJson = onDisk;
         UpdateDirty(tab);
+    }
+
+    private void SaveFolderOrCollection(RequestFolder folder)
+    {
+        if (folder is RequestCollection collection) _store!.SaveCollection(collection);
+        else _store!.SaveFolder(ParentOf(folder)!, folder);
     }
 
     private static void UpdateDirty(RequestTab tab) =>
         tab.IsModified = tab.SavedJson is not null && Json(tab.Request) != tab.SavedJson;
 
-    private static string Json(RequestDefinition request) => JsonSerializer.Serialize(request, JsonDefaults.Options);
+    /// <summary>JSON for change detection. Seq is left out: reordering in the sidebar isn't an edit of the tab.</summary>
+    private static string Json(RequestDefinition request)
+    {
+        var copy = request.Clone(newId: false);
+        copy.Seq = 0;
+        return JsonSerializer.Serialize(copy, JsonDefaults.Options);
+    }
 
     private static bool IsBlank(RequestTab tab) =>
         tab.SavedJson is null && tab.Response is null && !tab.IsSending && Json(tab.Request) == Json(new RequestDefinition { Id = tab.Request.Id });

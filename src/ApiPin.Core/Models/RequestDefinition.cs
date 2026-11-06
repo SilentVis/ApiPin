@@ -21,7 +21,8 @@ public sealed class RequestDefinition
     public List<KeyValueItem> PathParams { get; set; } = [];
 
     public List<KeyValueItem> Headers { get; set; } = [];
-    public AuthConfig Auth { get; set; } = new NoAuth();
+    /// <summary>Inherited from the folder/collection by default; a request outside a collection then has no auth.</summary>
+    public AuthConfig Auth { get; set; } = new InheritAuth();
     public BodyConfig Body { get; set; } = new NoBody();
     public RequestSettings Settings { get; set; } = new();
 

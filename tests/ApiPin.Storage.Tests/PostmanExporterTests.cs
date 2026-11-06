@@ -117,8 +117,10 @@ public class PostmanExporterTests
         var ntlm = Request(new() { Auth = new WindowsAuth { UseCurrentUser = false, Username = "u", Domain = "D" } }).GetProperty("request").GetProperty("auth");
         Assert.Equal("D", AuthValues(ntlm, "ntlm")["domain"]);
 
-        var none = Request(new()).GetProperty("request").GetProperty("auth");
+        var none = Request(new() { Auth = new NoAuth() }).GetProperty("request").GetProperty("auth");
         Assert.Equal("noauth", Str(none, "type"));
+
+        Assert.False(Request(new()).GetProperty("request").TryGetProperty("auth", out _)); // inherit
     }
 
     [Fact]
@@ -172,5 +174,41 @@ public class PostmanExporterTests
     public void File_name_follows_postman_convention()
     {
         Assert.Equal("orders-api.postman_collection.json", PostmanExporter.FileName(new RequestCollection { Name = "Orders API" }));
+    }
+
+    [Fact]
+    public void Collection_and_folder_settings()
+    {
+        var request = new RequestDefinition { Name = "R", Headers = [new() { Key = "Accept", Value = "mine" }] };
+        var folder = new RequestFolder
+        {
+            Name = "F",
+            Auth = new BasicAuth { Username = "u", Password = "p" },
+            Headers = [new() { Key = "X-Folder", Value = "f" }, new() { Key = "Accept", Value = "folder" }],
+            Requests = [request],
+        };
+        var collection = new RequestCollection
+        {
+            Name = "C",
+            Auth = new BearerAuth { Token = "{{token}}" },
+            Headers = [new() { Key = "X-Tenant", Value = "t" }],
+            Variables = [new() { Key = "token", Value = "abc" }, new() { Key = "pwd", Value = "hidden", Secret = true }],
+            Folders = [folder],
+        };
+
+        var root = Export(collection);
+
+        Assert.Equal("bearer", Str(root.GetProperty("auth"), "type"));
+        var vars = root.GetProperty("variable").EnumerateArray().ToList();
+        Assert.Equal(("token", "abc"), (Str(vars[0], "key"), Str(vars[0], "value")));
+        Assert.Equal(("pwd", "", "secret"), (Str(vars[1], "key"), Str(vars[1], "value"), Str(vars[1], "type")));
+
+        var folderItem = root.GetProperty("item")[0];
+        Assert.Equal("basic", Str(folderItem.GetProperty("auth"), "type"));
+
+        var exported = folderItem.GetProperty("item")[0].GetProperty("request");
+        Assert.False(exported.TryGetProperty("auth", out _));
+        var headers = exported.GetProperty("header").EnumerateArray().Select(h => (Str(h, "key"), Str(h, "value"))).ToList();
+        Assert.Equal([("X-Tenant", "t"), ("X-Folder", "f"), ("Accept", "mine")], headers);
     }
 }

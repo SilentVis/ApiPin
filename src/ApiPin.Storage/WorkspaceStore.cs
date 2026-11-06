@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using ApiPin.Core.Models;
@@ -40,6 +41,9 @@ public sealed partial class WorkspaceStore(string root)
     /// <summary>Where each loaded or saved item lives: a directory for collections and folders, a file for requests.</summary>
     private readonly Dictionary<Guid, string> _paths = [];
 
+    /// <summary>Paths this store wrote, moved or deleted recently, so a file watcher can ignore its own changes.</summary>
+    private readonly ConcurrentDictionary<string, (DateTime At, bool Recursive)> _touched = new(StringComparer.OrdinalIgnoreCase);
+
     public string Root { get; } = Path.GetFullPath(root);
     private string CollectionsDir => Path.Combine(Root, "collections");
 
@@ -71,7 +75,8 @@ public sealed partial class WorkspaceStore(string root)
             }
             if (Read<FolderFile>(file, workspace.Problems) is not { } dto) continue;
 
-            var collection = new RequestCollection { Name = dto.Name, Description = dto.Description, Seq = dto.Seq };
+            var collection = new RequestCollection { Name = dto.Name, Seq = dto.Seq };
+            dto.ApplyTo(collection);
             collection.Id = Register(dto.Id, dir, workspace.Problems);
             LoadChildren(collection, dir, workspace.Problems);
             workspace.Collections.Add(collection);
@@ -108,7 +113,12 @@ public sealed partial class WorkspaceStore(string root)
         if (!_paths.TryGetValue(request.Id, out var path) || !IsPlaced(path, parentDir, slug, RequestSuffix))
         {
             var target = UniquePath(parentDir, slug, RequestSuffix);
-            if (path is not null && File.Exists(path)) File.Move(path, target);
+            Touch(target);
+            if (path is not null && File.Exists(path))
+            {
+                Touch(path);
+                File.Move(path, target);
+            }
             path = _paths[request.Id] = target;
         }
         Write(path, request);
@@ -118,6 +128,7 @@ public sealed partial class WorkspaceStore(string root)
     public void Delete(Guid id)
     {
         if (!_paths.Remove(id, out var path)) return;
+        Touch(path, recursive: true);
 
         if (Directory.Exists(path))
         {
@@ -133,6 +144,25 @@ public sealed partial class WorkspaceStore(string root)
     /// <summary>Path on disk of a loaded or saved item, for display.</summary>
     public string? PathOf(Guid id) => _paths.GetValueOrDefault(id);
 
+    /// <summary>
+    /// True when this store changed <paramref name="path"/> within <paramref name="window"/>: the path itself, a folder
+    /// above something it wrote (folders get a change event when their contents change), or anything inside a folder
+    /// it moved or deleted.
+    /// </summary>
+    public bool IsOwnChange(string path, TimeSpan window)
+    {
+        path = Path.TrimEndingDirectorySeparator(path);
+        var cutoff = DateTime.UtcNow - window;
+        foreach (var (touched, (at, recursive)) in _touched)
+        {
+            if (at < cutoff) _touched.TryRemove(touched, out _);
+            else if (IsUnder(touched, path) || (recursive && IsUnder(path, touched))) return true;
+        }
+        return false;
+    }
+
+    private void Touch(string path, bool recursive = false) => _touched[Path.TrimEndingDirectorySeparator(path)] = (DateTime.UtcNow, recursive);
+
     private void LoadChildren(RequestFolder folder, string dir, List<WorkspaceProblem> problems)
     {
         foreach (var sub in Directory.EnumerateDirectories(dir).Order(StringComparer.OrdinalIgnoreCase))
@@ -145,7 +175,8 @@ public sealed partial class WorkspaceStore(string root)
             }
             if (Read<FolderFile>(file, problems) is not { } dto) continue;
 
-            var child = new RequestFolder { Name = dto.Name, Description = dto.Description, Seq = dto.Seq };
+            var child = new RequestFolder { Name = dto.Name, Seq = dto.Seq };
+            dto.ApplyTo(child);
             child.Id = Register(dto.Id, sub, problems);
             LoadChildren(child, sub, problems);
             folder.Folders.Add(child);
@@ -182,8 +213,11 @@ public sealed partial class WorkspaceStore(string root)
         if (_paths.TryGetValue(id, out var current) && IsPlaced(current, parentDir, slug, "")) return current;
 
         var target = UniquePath(parentDir, slug, "");
+        Touch(target);
         if (current is not null && Directory.Exists(current))
         {
+            Touch(current, recursive: true);
+            Touch(target, recursive: true);
             Directory.Move(current, target);
             foreach (var (key, path) in _paths.Where(p => IsUnder(p.Value, current)).ToList())
                 _paths[key] = target + path[current.Length..];
@@ -233,16 +267,43 @@ public sealed partial class WorkspaceStore(string root)
         }
     }
 
-    private static void Write<T>(string path, T value) =>
+    private void Write<T>(string path, T value)
+    {
+        Touch(path);
+        Touch(path + ".tmp");
         AtomicFile.WriteAllText(path, JsonSerializer.Serialize(value, JsonDefaults.Options) + Environment.NewLine);
+    }
 
     [GeneratedRegex(@"^\d+$")]
     private static partial Regex NumberSuffix();
 
     private sealed record WorkspaceFile(int Version, string Name);
 
-    private sealed record FolderFile(Guid Id, string Name, string? Description, int Seq)
+    /// <summary>collection.json / folder.json. Empty settings are left out so the files stay small.</summary>
+    private sealed record FolderFile(
+        Guid Id,
+        string Name,
+        string? Description,
+        int Seq,
+        AuthConfig? Auth = null,
+        List<KeyValueItem>? Headers = null,
+        List<Variable>? Variables = null)
     {
-        public static FolderFile From(RequestFolder folder) => new(folder.Id, folder.Name, folder.Description, folder.Seq);
+        public static FolderFile From(RequestFolder folder) => new(
+            folder.Id,
+            folder.Name,
+            folder.Description,
+            folder.Seq,
+            folder.Auth is InheritAuth || (folder is RequestCollection && folder.Auth is NoAuth) ? null : folder.Auth,
+            folder.Headers.Count == 0 ? null : folder.Headers,
+            folder.Variables.Count == 0 ? null : folder.Variables);
+
+        public void ApplyTo(RequestFolder folder)
+        {
+            folder.Description = Description;
+            if (Auth is not null) folder.Auth = Auth;
+            folder.Headers = Headers ?? [];
+            folder.Variables = Variables ?? [];
+        }
     }
 }

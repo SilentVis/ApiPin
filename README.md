@@ -24,6 +24,12 @@ What works today:
 - **Friendly errors** for DNS failures, refused connections, TLS problems, timeouts and cancellation
 - **Collections:** save requests (`Ctrl+S`, `Ctrl+Shift+S` for Save as) into collections and folders; open, rename,
   duplicate and delete them from the sidebar; filter by name or URL; unsaved changes are marked and you're asked before closing
+- **Folder and collection settings:** headers, auth and variables set on a collection or folder apply to the requests
+  inside (requests inherit auth by default; a request's own header wins); `{{variables}}` work in the URL, params,
+  headers, auth and body, including `{{$guid}}`, `{{$timestamp}}`, `{{$randomInt}}` and friends
+- **Drag and drop** requests, folders and collections in the sidebar to reorder or move them
+- **Git-friendly:** changes made outside ApiPin (a `git pull`) are picked up automatically; a tab with unsaved edits
+  asks whether to keep them or take the version on disk
 - **Postman export:** any collection to Postman Collection v2.1 (`<name>.postman_collection.json`), which Postman,
   Insomnia and Bruno can import
 - **Tabs** are kept across restarts in `%APPDATA%\ApiPin\scratch-tabs.json`; dark/light theme follows Windows
@@ -173,6 +179,11 @@ cookies, headers and body, exactly as the server received them.
 | `/oauth/token` | Fake OAuth 2.0 token endpoint: client credentials, password, authorization code (with PKCE) and refresh token. Client `apipin` / `secret`, user `user` / `pass`; add `?lifetime=60` for short-lived tokens |
 | `/oauth/authorize` | Approves at once and redirects back with a code |
 | `/oauth/me` | Protected resource: needs a valid token from `/oauth/token` |
+
+### App data
+
+Settings, open tabs and logs live in `%APPDATA%\ApiPin`. Set the `APIPIN_DATA_DIR` environment variable to use
+another folder, for a portable setup or to try a build without touching your own data.
 
 ### Logs
 

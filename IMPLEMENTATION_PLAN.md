@@ -276,7 +276,7 @@ Effort is in **focused dev-days** for one developer. Each phase ends with a usab
 - [x] Request bar: method dropdown (with colour coding), URL box, **Send** / **Cancel** button; `Ctrl+Enter` sends
 - [x] Sub-tabs: **Params** (query + path), **Headers**, **Auth**, **Body**, **Settings**
 - [x] Reusable `KeyValueGrid` component: enable checkbox, key, value, description, bulk-edit text mode, auto-append empty row, common-header autocomplete
-- [x] Auth tab: type selector and forms for None / Inherit / Basic / Bearer / API Key (Inherit arrives with the `InheritanceResolver` in Phase 3)
+- [x] Auth tab: type selector and forms for None / Inherit / Basic / Bearer / API Key (Inherit came with the `InheritanceResolver` in Phase 3; new requests inherit by default)
 - [x] Body tab: none / raw (JSON, XML, text) in Monaco with **Format** button / form-urlencoded / multipart with file picker / binary file (plain text editor instead of Monaco)
 - [x] Response panel: status pill (colour by class), time, size; tabs **Body** (Pretty via Monaco read-only, Raw, Preview for HTML and images), **Headers**, **Cookies**, **Timings** (Pretty uses a built-in syntax highlighter instead of Monaco)
 - [x] Response actions: copy body, save to file, search in body
@@ -287,16 +287,16 @@ Effort is in **focused dev-days** for one developer. Each phase ends with a usab
 
 ### Phase 3 — Workspaces and collections (≈ 7–8 days)
 
-- [x] Open/create a workspace folder; reopen the last one on start (recent workspaces list still to do)
+- [x] Open/create a workspace folder; reopen the last one on start; recent workspaces in the sidebar's `⋯` menu
 - [x] `WorkspaceStore`: load/save collections, folders and requests per §3.5; atomic writes; stable JSON formatting
 - [x] Sidebar tree: collections → folders → requests with method badges; filter/search box
 - [x] CRUD: new collection/folder/request, rename (dialog), duplicate, delete (with confirmation)
-- [ ] **Drag-and-drop** reorder and move
+- [x] **Drag-and-drop** reorder and move (requests, folders and collections; files and folders move on disk)
 - [x] Save (`Ctrl+S`), dirty indicator on tabs, "Save as…" into a collection; prompt on closing unsaved tabs
-- [x] Export a collection as Postman Collection v2.1 (import stays in Phase 6)
-- [ ] Collection- and folder-level settings: headers, auth, variables, description (markdown)
-- [ ] `InheritanceResolver`: auth `inherit` walks up to folder → collection; headers merge (request wins on conflict)
-- [ ] `FileSystemWatcher` reloads changed files and flags conflicts with open dirty tabs
+- [x] Export a collection as Postman Collection v2.1 (import stays in Phase 6) (collection/folder auth and collection variables carry over; folder headers are added to each request since Postman has none)
+- [x] Collection- and folder-level settings: headers, auth, variables, description (markdown) (a settings dialog from the item's `⋯` menu; the description is stored as Markdown but edited as plain text)
+- [x] `InheritanceResolver`: auth `inherit` walks up to folder → collection; headers merge (request wins on conflict) (the request editor shows where inherited auth and headers come from; `RequestPreparer` runs inheritance, then variables, before sending)
+- [x] `FileSystemWatcher` reloads changed files and flags conflicts with open dirty tabs (unedited tabs pick up the new version; edited ones offer "use the version on disk" or "keep my changes")
 - [x] Storage tests: round-trip, rename/move on disk, corrupted-file handling (skip and report, never crash)
 
 **Exit criteria:** a collection created in ApiPin can be committed to Git, cloned on another machine and opened unchanged.

@@ -1,0 +1,89 @@
+@* Editable variables: enabled, key, value, secret flag, description. A trailing "ghost" row becomes real when typed in. *@
+
+<div class="kv-grid vars @(ShowDescription ? "with-desc" : null)">
+    <div class="kv-head">
+        <span></span>
+        <span>Variable</span>
+        <span>Value</span>
+        <span title="Secret values are masked and kept out of workspace files">Secret</span>
+        @if (ShowDescription)
+        {
+            <span>Description</span>
+        }
+        <span></span>
+    </div>
+    @foreach (var item in Items.Append(_ghost))
+    {
+        var ghost = ReferenceEquals(item, _ghost);
+        <div class="kv-row @(item.Enabled ? null : "off") @(ghost ? "ghost" : null)" @key="item">
+            <input type="checkbox" title="Enabled" checked="@item.Enabled" disabled="@ghost" @onchange="e => Edit(item, i => i.Enabled = e.Value is true)" />
+            <input class="kv-key" value="@item.Key" placeholder="@(ghost ? "name" : null)" spellcheck="false"
+                   @oninput="e => Edit(item, i => i.Key = Str(e))" />
+            @if (item.Secret)
+            {
+                <span class="secret-cell">
+                    <input type="@(_shown.Contains(item) ? "text" : "password")" value="@item.Value" spellcheck="false" autocomplete="off"
+                           placeholder="@(MissingSecret?.Invoke(item) == true ? "missing on this computer — enter it" : null)"
+                           class="@(MissingSecret?.Invoke(item) == true ? "missing" : null)"
+                           @oninput="e => Edit(item, i => i.Value = Str(e))" />
+                    <button class="icon-btn" type="button" title="@(_shown.Contains(item) ? "Hide" : "Show")" @onclick="() => ToggleShown(item)">@(_shown.Contains(item) ? "◉" : "◎")</button>
+                </span>
+            }
+            else
+            {
+                <input class="kv-value" value="@item.Value" placeholder="@(ghost ? "value" : null)" spellcheck="false"
+                       @oninput="e => Edit(item, i => i.Value = Str(e))" />
+            }
+            <input type="checkbox" title="Secret" checked="@item.Secret" @onchange="e => Edit(item, i => i.Secret = e.Value is true)" />
+            @if (ShowDescription)
+            {
+                <input class="kv-desc" value="@item.Description" placeholder="@(ghost ? "Description" : null)"
+                       @oninput="e => Edit(item, i => i.Description = Str(e) is { Length: > 0 } d ? d : null)" />
+            }
+            @if (ghost)
+            {
+                <span></span>
+            }
+            else
+            {
+                <button class="icon-btn" title="Remove" @onclick="() => Remove(item)">✕</button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public List<Variable> Items { get; set; } = [];
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public bool ShowDescription { get; set; } = true;
+
+    /// <summary>True for a secret whose value isn't stored on this computer yet (e.g. after cloning).</summary>
+    [Parameter] public Func<Variable, bool>? MissingSecret { get; set; }
+
+    private Variable _ghost = new();
+    private readonly HashSet<Variable> _shown = [];
+
+    private static string Str(ChangeEventArgs e) => e.Value?.ToString() ?? "";
+
+    private Task Edit(Variable item, Action<Variable> set)
+    {
+        set(item);
+        if (ReferenceEquals(item, _ghost))
+        {
+            Items.Add(item);
+            _ghost = new();
+        }
+        return OnChanged.InvokeAsync();
+    }
+
+    private void ToggleShown(Variable item)
+    {
+        if (!_shown.Remove(item)) _shown.Add(item);
+    }
+
+    private Task Remove(Variable item)
+    {
+        Items.Remove(item);
+        return OnChanged.InvokeAsync();
+    }
+}

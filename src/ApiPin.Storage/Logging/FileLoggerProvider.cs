@@ -32,7 +32,7 @@ public sealed class FileLoggerProvider : ILoggerProvider
 
     /// <summary>%APPDATA%\ApiPin\logs</summary>
     public static string DefaultDirectory =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ApiPin", "logs");
+        AppDataPaths.File("logs");
 
     public ILogger CreateLogger(string categoryName) => new FileLogger(this, categoryName);
 

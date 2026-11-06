@@ -567,3 +567,34 @@ select.compact { padding: 3px 6px; font-size: 12px; }
     .method-select, .method-input { width: 92px; }
     .field { grid-template-columns: 1fr; gap: 4px; }
 }
+
+/* ---------- Drag and drop, inheritance, folder settings ---------- */
+
+.tree.dragging .tree-row * { pointer-events: none; }
+.tree-row.drag-source { opacity: .45; }
+.tree-row.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.tree-row.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+.tree-row.drop-into { background: var(--bg-hover); outline: 1px dashed var(--accent); outline-offset: -1px; }
+.settings-mark { color: var(--muted); font-size: 11px; }
+
+.menu-sep { font-size: 11px; color: var(--muted); padding: 6px 10px 2px; border-top: 1px solid var(--border); margin-top: 4px; text-transform: uppercase; letter-spacing: .4px; }
+.menu-recent { display: flex; align-items: center; }
+.menu-recent .menu-item { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.menu-path { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; max-width: 300px; }
+
+.banner.conflict { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 8px 12px 0; }
+.table.inherited td:first-child { width: 28%; font-weight: 600; }
+.table.inherited td:last-child { width: 1%; white-space: nowrap; }
+.table.inherited tr.overridden td { text-decoration: line-through; color: var(--muted); }
+
+.modal.wide { width: min(860px, 100%); max-height: 80vh; }
+.modal-backdrop:has(.modal.wide) { padding-top: 8vh; }
+.modal-tabs { padding: 0; }
+.modal-body { min-height: 260px; overflow: auto; }
+.description-input { width: 100%; min-height: 220px; resize: vertical; }
+
+.kv-grid.vars { grid-template-columns: 28px minmax(110px, 1fr) minmax(140px, 1.5fr) 52px 28px; }
+.kv-grid.vars.with-desc { grid-template-columns: 28px minmax(110px, 1fr) minmax(140px, 1.5fr) 52px minmax(90px, 1fr) 28px; }
+.kv-row > .secret-cell { display: flex; align-items: center; border-left: 1px solid var(--border); min-width: 0; }
+.kv-row > .secret-cell input { flex: 1; min-width: 0; border: none !important; border-radius: 0 !important; background: transparent !important; font-family: var(--mono); font-size: 12px; }
+.kv-row > .secret-cell input.missing::placeholder { color: var(--warn); }

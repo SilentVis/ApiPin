@@ -12,6 +12,7 @@ public sealed class Variable
     public string Value { get; set; } = "";
 
     /// <summary>Masked in the UI and kept out of workspace files.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool Secret { get; set; }
 
     public string? Description { get; set; }

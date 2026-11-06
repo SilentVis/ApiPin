@@ -4,6 +4,7 @@ namespace ApiPin.Core.Models;
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(NoAuth), "none")]
+[JsonDerivedType(typeof(InheritAuth), "inherit")]
 [JsonDerivedType(typeof(BasicAuth), "basic")]
 [JsonDerivedType(typeof(BearerAuth), "bearer")]
 [JsonDerivedType(typeof(ApiKeyAuth), "apikey")]
@@ -17,6 +18,9 @@ public abstract class AuthConfig
 }
 
 public sealed class NoAuth : AuthConfig;
+
+/// <summary>Use the auth of the nearest folder or collection that sets one; no auth when none does.</summary>
+public sealed class InheritAuth : AuthConfig;
 
 public sealed class BasicAuth : AuthConfig
 {

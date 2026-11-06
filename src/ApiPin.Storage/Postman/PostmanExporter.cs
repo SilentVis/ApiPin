@@ -1,6 +1,7 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using ApiPin.Core.Execution;
 using ApiPin.Core.Http;
 using ApiPin.Core.Models;
 
@@ -9,6 +10,8 @@ namespace ApiPin.Storage.Postman;
 /// <summary>
 /// Writes a collection as Postman Collection Format v2.1, which Postman, Insomnia, Bruno and others can import.
 /// Settings Postman has no equivalent for (per-request timeout, HTTP version) are left out.
+/// Collection and folder auth carry over (requests set to inherit leave <c>auth</c> out, as Postman does);
+/// collection and folder headers, which Postman lacks, are added to each request inside.
 /// </summary>
 public static class PostmanExporter
 {
@@ -31,29 +34,50 @@ public static class PostmanExporter
         };
         if (!string.IsNullOrWhiteSpace(collection.Description)) info["description"] = collection.Description;
 
-        var root = new JsonObject { ["info"] = info, ["item"] = Items(collection) };
+        var root = new JsonObject { ["info"] = info, ["item"] = Items(collection, []) };
+        if (FolderAuth(collection) is { } auth) root["auth"] = auth;
+
+        var variables = collection.Variables.Concat(collection.SelfAndDescendants().Skip(1).SelectMany(f => f.Variables))
+            .Where(v => v.Key.Trim().Length > 0)
+            .GroupBy(v => v.Key.Trim())
+            .Select(g => g.First());
+        var variableArray = new JsonArray(variables.Select(v =>
+        {
+            var obj = new JsonObject { ["key"] = v.Key.Trim(), ["value"] = v.Secret ? "" : v.Value, ["type"] = v.Secret ? "secret" : "string" };
+            if (!v.Enabled) obj["disabled"] = true;
+            return (JsonNode)obj;
+        }).ToArray());
+        if (variableArray.Count > 0) root["variable"] = variableArray;
+
         return root.ToJsonString(Output);
     }
 
     /// <summary>Suggested file name, following Postman's own convention.</summary>
     public static string FileName(RequestCollection collection) => $"{Slug.From(collection.Name, "collection")}.postman_collection.json";
 
-    private static JsonArray Items(RequestFolder folder)
+    /// <param name="chain">Folders above <paramref name="folder"/>, outermost first, for inherited headers.</param>
+    private static JsonArray Items(RequestFolder folder, List<RequestFolder> chain)
     {
+        List<RequestFolder> path = [.. chain, folder];
         var items = new JsonArray();
         foreach (var sub in folder.OrderedFolders)
         {
-            var item = new JsonObject { ["name"] = sub.Name, ["item"] = Items(sub) };
+            var item = new JsonObject { ["name"] = sub.Name, ["item"] = Items(sub, path) };
             if (!string.IsNullOrWhiteSpace(sub.Description)) item["description"] = sub.Description;
+            if (FolderAuth(sub) is { } auth) item["auth"] = auth;
             items.Add(item);
         }
-        foreach (var request in folder.OrderedRequests) items.Add(Item(request));
+        foreach (var request in folder.OrderedRequests) items.Add(Item(request, path));
         return items;
     }
 
-    private static JsonObject Item(RequestDefinition r)
+    private static JsonObject? FolderAuth(RequestFolder folder) =>
+        folder.Auth is InheritAuth ? null : Auth(folder.Auth, new JsonArray());
+
+    private static JsonObject Item(RequestDefinition r, IReadOnlyList<RequestFolder> chain)
     {
-        var headers = Headers(r.Headers);
+        var inherited = InheritanceResolver.InheritedHeaders(r.Headers, chain).Where(h => !h.Overridden).Select(h => h.Header);
+        var headers = Headers(inherited.Concat(r.Headers));
         var request = new JsonObject
         {
             ["method"] = r.Method.Trim() is { Length: > 0 } m ? m.ToUpperInvariant() : "GET",
@@ -86,6 +110,9 @@ public static class PostmanExporter
     {
         switch (auth)
         {
+            case InheritAuth:
+                return null; // Postman: no auth object means inherit from the parent
+
             case BasicAuth basic:
                 return Typed("basic", ("username", basic.Username), ("password", basic.Password));
 

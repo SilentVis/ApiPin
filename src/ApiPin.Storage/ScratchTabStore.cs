@@ -13,7 +13,7 @@ public sealed class ScratchTabStore(string filePath)
     public string FilePath { get; } = filePath;
 
     public static string DefaultPath =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ApiPin", "scratch-tabs.json");
+        AppDataPaths.File("scratch-tabs.json");
 
     /// <summary>Returns no tabs when the file is missing or unreadable; never throws for bad content.</summary>
     public ScratchTabs Load()

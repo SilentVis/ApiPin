@@ -1,3 +1,4 @@
+@using ApiPin.Core.Execution
 @inject WorkspaceState State
 @inject UiActions Actions
 
@@ -28,6 +29,15 @@
                 @onclick="() => Actions.SaveAsAsync(Tab)">Save as…</button>
         <button class="btn ghost" title="Duplicate this request in a new tab" @onclick="() => State.Duplicate(Tab)">Duplicate</button>
     </div>
+
+    @if (Tab.HasConflict)
+    {
+        <div class="banner warn conflict">
+            <span>This request changed on disk (for example after a git pull) while you were editing it.</span>
+            <button class="btn ghost" @onclick="() => State.UseVersionOnDisk(Tab)">Use the version on disk</button>
+            <button class="btn ghost" @onclick="() => State.KeepMyVersion(Tab)">Keep my changes</button>
+        </div>
+    }
 
     <div class="request-bar">
         @if (_customMethod)
@@ -63,8 +73,8 @@
 
     <nav class="subtabs">
         @Section("params", "Params", ActiveCount(Request.QueryParams) + ActiveCount(Request.PathParams))
-        @Section("headers", "Headers", ActiveCount(Request.Headers))
-        @Section("auth", "Auth", Request.Auth is NoAuth ? 0 : 1, dot: true)
+        @Section("headers", "Headers", ActiveCount(Request.Headers) + Inherited.Count(h => !h.Overridden))
+        @Section("auth", "Auth", EffectiveAuth.Auth is NoAuth ? 0 : 1, dot: true)
         @Section("body", "Body", Request.Body is NoBody ? 0 : 1, dot: true)
         @Section("settings", "Settings", Request.Settings.VerifyTls ? 0 : 1, dot: true)
     </nav>
@@ -89,11 +99,28 @@
 
             case "headers":
                 <KeyValueGrid Items="Request.Headers" OnChanged="State.MarkDirty" KeySuggestions="Display.CommonHeaders" KeyPlaceholder="Header" />
+                @if (Inherited.Count > 0)
+                {
+                    <h4 class="section-title">Inherited</h4>
+                    <table class="table inherited">
+                        <tbody>
+                            @foreach (var h in Inherited)
+                            {
+                                <tr class="@(h.Overridden ? "overridden" : null)" title="@(h.Overridden ? "Overridden by a header with the same name closer to this request" : null)">
+                                    <td class="mono">@h.Header.Key</td>
+                                    <td class="mono wrap">@h.Header.Value</td>
+                                    <td class="muted">from @h.From.Name</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
                 <p class="hint">Added automatically unless set here: @string.Join(" · ", AutoHeaders())</p>
                 break;
 
             case "auth":
-                <AuthEditor Tab="Tab" />
+                <AuthEditor Auth="Request.Auth" AuthChanged="OnAuthChanged" OnEdited="State.MarkDirty" Cache="Tab.AuthCache"
+                            Inherited="InheritanceResolver.EffectiveAuth(new InheritAuth(), Chain)" HasParent="Chain.Count > 0" />
                 break;
 
             case "body":
@@ -113,6 +140,15 @@
     [Parameter, EditorRequired] public RequestTab Tab { get; set; } = null!;
 
     private RequestDefinition Request => Tab.Request;
+    private IReadOnlyList<RequestFolder> Chain => State.ChainFor(Tab);
+    private IReadOnlyList<InheritedHeader> Inherited => InheritanceResolver.InheritedHeaders(Request.Headers, Chain);
+    private InheritedAuth EffectiveAuth => InheritanceResolver.EffectiveAuth(Request.Auth, Chain);
+
+    private void OnAuthChanged(AuthConfig auth)
+    {
+        Request.Auth = auth;
+        State.MarkDirty();
+    }
     private string MethodValue => Request.Method.Trim().ToUpperInvariant() is { Length: > 0 } m ? m : "GET";
 
     private bool _customMethod;
@@ -189,8 +225,9 @@
         if (!Has("User-Agent")) yield return $"User-Agent: {HttpRequestBuilder.DefaultUserAgent}";
         if (!Has("Accept")) yield return "Accept: */*";
         if (!Has("Content-Type") && ContentTypeFromBody() is { } ct) yield return $"Content-Type: {ct}";
-        if (!Has("Authorization") && Request.Auth is BasicAuth or BearerAuth) yield return "Authorization (from Auth tab)";
-        if (Request.Auth is ApiKeyAuth { Location: ApiKeyLocation.Header } k && k.Key.Length > 0 && !Has(k.Key)) yield return $"{k.Key} (from Auth tab)";
+        var auth = EffectiveAuth.Auth;
+        if (!Has("Authorization") && auth is BasicAuth or BearerAuth) yield return "Authorization (from Auth tab)";
+        if (auth is ApiKeyAuth { Location: ApiKeyLocation.Header } k && k.Key.Length > 0 && !Has(k.Key)) yield return $"{k.Key} (from Auth tab)";
         yield return "Host, Content-Length";
     }
 

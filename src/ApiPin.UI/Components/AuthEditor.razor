@@ -1,9 +1,14 @@
-@inject WorkspaceState State
+@* Auth settings of a request, folder or collection. *@
+@using ApiPin.Core.Execution
 
 <div class="form">
     <label class="field">
         <span>Type</span>
-        <select value="@TypeKey(Tab.Request.Auth)" @onchange="OnTypeChanged">
+        <select value="@TypeKey(Auth)" @onchange="OnTypeChanged">
+            @if (AllowInherit)
+            {
+                <option value="inherit">Inherit from parent</option>
+            }
             <option value="none">No auth</option>
             <option value="basic">Basic</option>
             <option value="bearer">Bearer token</option>
@@ -12,10 +17,23 @@
         </select>
     </label>
 
-    @switch (Tab.Request.Auth)
+    @switch (Auth)
     {
+        case InheritAuth:
+            @if (Inherited?.From is { } from)
+            {
+                <p class="hint">
+                    Uses <b>@Describe(Inherited.Auth)</b> from @(from is RequestCollection ? "collection" : "folder") <b>@from.Name</b>.
+                </p>
+            }
+            else
+            {
+                <p class="hint">@(HasParent ? "No folder or collection above sets auth, so this is sent without auth." : "Not saved in a collection, so this is sent without auth.")</p>
+            }
+            break;
+
         case NoAuth:
-            <p class="hint">This request is sent without authorization.</p>
+            <p class="hint">@(AllowInherit ? "Sent without authorization." : "Requests inside are sent without authorization unless they or a folder set it.")</p>
             break;
 
         case BasicAuth basic:
@@ -73,15 +91,38 @@
             <p class="hint">The handshake (Negotiate, Kerberos or NTLM) happens automatically when the server asks for it.</p>
             break;
     }
+    @if (Auth is not (InheritAuth or NoAuth))
+    {
+        <p class="hint">Fields can use <code>{{variables}}</code>.</p>
+    }
 </div>
 
 @code {
-    [Parameter, EditorRequired] public RequestTab Tab { get; set; } = null!;
+    /// <summary>The auth being edited.</summary>
+    [Parameter, EditorRequired] public AuthConfig Auth { get; set; } = null!;
+
+    /// <summary>Called with a new auth object when the type changes.</summary>
+    [Parameter] public EventCallback<AuthConfig> AuthChanged { get; set; }
+
+    /// <summary>Called after a field of the current auth was edited in place.</summary>
+    [Parameter] public EventCallback OnEdited { get; set; }
+
+    /// <summary>Settings of other types, so switching type and back keeps what was typed.</summary>
+    [Parameter] public Dictionary<Type, AuthConfig>? Cache { get; set; }
+
+    [Parameter] public bool AllowInherit { get; set; } = true;
+
+    /// <summary>What "inherit" resolves to, for the explanation.</summary>
+    [Parameter] public InheritedAuth? Inherited { get; set; }
+
+    /// <summary>False for a request that isn't saved in a collection.</summary>
+    [Parameter] public bool HasParent { get; set; } = true;
 
     private static string Str(ChangeEventArgs e) => e.Value?.ToString() ?? "";
 
     private static string TypeKey(AuthConfig auth) => auth switch
     {
+        InheritAuth => "inherit",
         BasicAuth => "basic",
         BearerAuth => "bearer",
         ApiKeyAuth => "apikey",
@@ -89,26 +130,35 @@
         _ => "none",
     };
 
-    private void Set(Action change)
+    public static string Describe(AuthConfig auth) => auth switch
+    {
+        BasicAuth => "Basic auth",
+        BearerAuth => "a bearer token",
+        ApiKeyAuth k => $"API key '{k.Key}'",
+        WindowsAuth => "Windows auth",
+        _ => "no auth",
+    };
+
+    private Task Set(Action change)
     {
         change();
-        State.MarkDirty();
+        return OnEdited.InvokeAsync();
     }
 
-    private void OnTypeChanged(ChangeEventArgs e)
+    private Task OnTypeChanged(ChangeEventArgs e)
     {
-        var current = Tab.Request.Auth;
-        Tab.AuthCache[current.GetType()] = current;
+        if (Cache is not null) Cache[Auth.GetType()] = Auth;
 
         Type type = Str(e) switch
         {
+            "inherit" => typeof(InheritAuth),
             "basic" => typeof(BasicAuth),
             "bearer" => typeof(BearerAuth),
             "apikey" => typeof(ApiKeyAuth),
             "windows" => typeof(WindowsAuth),
             _ => typeof(NoAuth),
         };
-        Tab.Request.Auth = Tab.AuthCache.TryGetValue(type, out var cached) ? cached : (AuthConfig)Activator.CreateInstance(type)!;
-        State.MarkDirty();
+        var next = Cache is not null && Cache.TryGetValue(type, out var cached) ? cached : (AuthConfig)Activator.CreateInstance(type)!;
+        return AuthChanged.InvokeAsync(next);
     }
 }

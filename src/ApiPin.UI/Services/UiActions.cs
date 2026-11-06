@@ -1,4 +1,5 @@
 using System.Text;
+using ApiPin.Core.Execution;
 using ApiPin.Core.Models;
 using ApiPin.UI.State;
 using Microsoft.JSInterop;
@@ -69,6 +70,14 @@ public sealed class UiActions(WorkspaceState state, DialogService dialogs, IPlat
     {
         if (await dialogs.ConfirmAsync("Delete request", $"Delete '{request.Name}'? Its file is removed from the workspace folder.", "Delete", danger: true))
             state.Delete(request);
+    }
+
+    /// <summary>Edits a folder's or collection's headers, auth, variables and description.</summary>
+    public async Task EditSettingsAsync(RequestFolder folder)
+    {
+        var parent = state.ParentOf(folder);
+        var parentAuth = parent is null ? null : InheritanceResolver.EffectiveAuth(new InheritAuth(), state.ChainOf(parent));
+        if (await dialogs.FolderSettingsAsync(folder, parentAuth) is { } settings) state.UpdateSettings(folder, settings);
     }
 
     public async Task ExportPostmanAsync(RequestCollection collection)
