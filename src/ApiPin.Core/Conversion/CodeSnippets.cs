@@ -36,8 +36,7 @@ public static class CodeSnippets
             SnippetLanguage.JavaScript => JavaScript(parts),
             _ => Python(parts),
         };
-        return code.ReplaceLineEndings("
-");
+        return code.ReplaceLineEndings("\n");
     }
 
     private sealed record Parts(string Method, string Url, List<KeyValuePair<string, string>> Headers, BodyConfig Body, bool Insecure, bool FollowRedirects);
