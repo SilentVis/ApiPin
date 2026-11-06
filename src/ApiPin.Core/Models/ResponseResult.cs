@@ -1,6 +1,6 @@
 namespace ApiPin.Core.Models;
 
-public enum ErrorKind { InvalidRequest, DnsFailure, ConnectionRefused, Tls, Timeout, Cancelled, Network, Unknown }
+public enum ErrorKind { InvalidRequest, Auth, DnsFailure, ConnectionRefused, Tls, Timeout, Cancelled, Network, Unknown }
 
 public sealed record ExecutionError(ErrorKind Kind, string Title, string Detail, string? Hint = null);
 

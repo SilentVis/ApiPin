@@ -1,0 +1,39 @@
+{
+  "id": "a1d2c3b4-2222-4a2b-9c3d-000000000002",
+  "name": "Create item",
+  "method": "POST",
+  "url": "{{baseUrl}}/items",
+  "queryParams": [],
+  "pathParams": [],
+  "headers": [],
+  "auth": {
+    "type": "inherit"
+  },
+  "body": {
+    "type": "raw",
+    "language": "json",
+    "content": "{\n  \"name\": \"Widget {{$randomInt}}\",\n  \"price\": 9.99\n}"
+  },
+  "settings": {
+    "timeoutMs": 30000,
+    "followRedirects": true,
+    "maxRedirects": 10,
+    "verifyTls": true,
+    "useCookieJar": true
+  },
+  "seq": 1,
+  "captures": [
+    { "enabled": true, "variable": "itemId", "source": "jsonPath", "expression": "$.id", "target": "runtime" }
+  ],
+  "assertions": [
+    { "enabled": true, "kind": "status", "target": "", "operator": "equals", "expected": "201" },
+    { "enabled": true, "kind": "jsonPath", "target": "$.name", "operator": "contains", "expected": "Widget" },
+    {
+      "enabled": true,
+      "kind": "jsonSchema",
+      "target": "",
+      "operator": "equals",
+      "expected": "{ \"type\": \"object\", \"required\": [\"id\", \"name\", \"price\"], \"properties\": { \"id\": { \"type\": \"integer\" }, \"price\": { \"type\": \"number\", \"minimum\": 0 } } }"
+    }
+  ]
+}

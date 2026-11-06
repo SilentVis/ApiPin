@@ -9,6 +9,11 @@
     <PackageVersion Include="Microsoft.AspNetCore.Components.Web" Version="10.0.14" />
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebView.Wpf" Version="10.0.120" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.7" />
+    <PackageVersion Include="Microsoft.OpenApi.Readers" Version="1.6.31" />
+    <PackageVersion Include="Velopack" Version="1.2.161" />
 
     <!-- Tests -->
     <PackageVersion Include="xunit.v3" Version="4.0.2" />

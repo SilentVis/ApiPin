@@ -1,0 +1,121 @@
+@* The request exactly as it would be sent now: inheritance applied, variables resolved, auth headers added; secrets masked. *@
+@using ApiPin.Core.Execution
+@inject WorkspaceState State
+
+@{
+    var prepared = State.Prepare(Tab);
+    var secrets = prepared.Variables.SecretValues().Where(s => s.Length >= 3).OrderByDescending(s => s.Length).ToList();
+    var authUsesSecret = AuthUsesSecret(prepared.Request.Auth, secrets);
+    var (line, headers, error) = Describe(prepared.Request);
+}
+
+@if (prepared.Report.Unresolved.Count > 0)
+{
+    <div class="banner error">Not defined: @string.Join(", ", prepared.Report.Unresolved.Select(n => "{{" + n + "}}")). They're sent as written.</div>
+}
+@if (prepared.Report.Cyclic.Count > 0)
+{
+    <div class="banner warn">These reference themselves (directly or in a loop): @string.Join(", ", prepared.Report.Cyclic).</div>
+}
+
+@if (error is not null)
+{
+    <div class="banner error">@error</div>
+}
+else
+{
+    <p class="mono sent-line"><b>@prepared.Request.Method.Trim().ToUpperInvariant()</b> @Mask(line, secrets)</p>
+    <table class="table headers">
+        <thead><tr><th>Header</th><th>Value</th></tr></thead>
+        <tbody>
+            @foreach (var (name, value) in headers)
+            {
+                <tr>
+                    <td class="mono">@name</td>
+                    <td class="mono wrap">@(IsAuthHeader(name, prepared.Request.Auth) && authUsesSecret ? MaskAuth(value) : Mask(value, secrets))</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <p class="muted">Host, Content-Length and cookies are added when sending.</p>
+
+    @switch (prepared.Request.Body)
+    {
+        case RawBody raw when raw.Content.Length > 0:
+            <h4 class="section-title">Body</h4>
+            <pre class="code wrap">@Mask(raw.Content.Length > 20_000 ? raw.Content[..20_000] + "\n…" : raw.Content, secrets)</pre>
+            break;
+        case FormUrlEncodedBody form:
+            <h4 class="section-title">Body</h4>
+            <pre class="code wrap">@Mask(string.Join("&", form.Fields.Where(f => f.IsActive).Select(f => Uri.EscapeDataString(f.Key) + "=" + Uri.EscapeDataString(f.Value))), secrets)</pre>
+            break;
+        case MultipartBody multipart:
+            <h4 class="section-title">Body parts</h4>
+            <table class="table">
+                <tbody>
+                    @foreach (var part in multipart.Parts.Where(p => p.Enabled && p.Name.Length > 0))
+                    {
+                        <tr><td class="mono">@part.Name</td><td class="mono wrap">@(part.Kind == MultipartPartKind.File ? "file: " + part.Value : Mask(part.Value, secrets))</td></tr>
+                    }
+                </tbody>
+            </table>
+            break;
+        case BinaryFileBody binary:
+            <h4 class="section-title">Body</h4>
+            <p class="mono">file: @binary.FilePath</p>
+            break;
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public RequestTab Tab { get; set; } = null!;
+
+    private static (string Url, List<KeyValuePair<string, string>> Headers, string? Error) Describe(RequestDefinition request)
+    {
+        try
+        {
+            using var message = HttpRequestBuilder.Build(request);
+            var headers = message.Headers.NonValidated.SelectMany(h => h.Value.Select(v => KeyValuePair.Create(h.Key, v))).ToList();
+            if (message.Content is { } content)
+                headers.AddRange(content.Headers.NonValidated.Where(h => h.Key != "Content-Length").SelectMany(h => h.Value.Select(v => KeyValuePair.Create(h.Key, v))));
+            return (message.RequestUri?.ToString() ?? request.Url, headers, null);
+        }
+        catch (RequestBuildException ex)
+        {
+            return (request.Url, [], ex.Message);
+        }
+        catch (IOException ex)
+        {
+            return (request.Url, [], ex.Message);
+        }
+    }
+
+    private static string Mask(string text, List<string> secrets)
+    {
+        foreach (var s in secrets) text = text.Replace(s, "••••••", StringComparison.Ordinal);
+        return text;
+    }
+
+    private static string MaskAuth(string value)
+    {
+        var space = value.IndexOf(' ');
+        return space > 0 ? value[..space] + " ••••••" : "••••••";
+    }
+
+    private static bool IsAuthHeader(string name, AuthConfig auth) =>
+        name.Equals("Authorization", StringComparison.OrdinalIgnoreCase) ||
+        (auth is ApiKeyAuth k && name.Equals(k.Key.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Basic auth is base64-encoded, so its secrets can't be found by text replacement; mask the whole header.</summary>
+    private static bool AuthUsesSecret(AuthConfig auth, List<string> secrets)
+    {
+        var fields = auth switch
+        {
+            BasicAuth b => [b.Username, b.Password],
+            BearerAuth b => [b.Token],
+            ApiKeyAuth k => [k.Value],
+            _ => Array.Empty<string>(),
+        };
+        return fields.Any(f => secrets.Any(s => f.Contains(s, StringComparison.Ordinal)));
+    }
+}

@@ -6,6 +6,7 @@ export function registerShortcuts(dotnet) {
     unregisterShortcuts();
     shortcutHandler = e => {
         // Tab inserts spaces in code editors instead of moving focus.
+        if (suggestState) return; // the {{variable}} suggestion list handles its own keys
         if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && e.target.matches?.('textarea.code-input')) {
             e.preventDefault();
             document.execCommand('insertText', false, '  ');
@@ -16,14 +17,18 @@ export function registerShortcuts(dotnet) {
         let action = null;
 
         // Alt alternatives for browsers, which keep Ctrl+T / Ctrl+W / Ctrl+Tab for themselves.
-        if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
-            if (e.code === 'KeyT') action = 'newTab';
-            else if (e.code === 'KeyW') action = 'closeTab';
+        if (e.altKey && !e.ctrlKey && !e.metaKey) {
+            if (e.code === 'KeyT') action = e.shiftKey ? 'reopenTab' : 'newTab';
+            else if (e.code === 'KeyW' && !e.shiftKey) action = 'closeTab';
         }
         else if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
         else if (key === 'enter') action = 'send';
         else if (key === 's') action = e.shiftKey ? 'saveAs' : 'save';
-        else if (key === 't' && !e.shiftKey) action = 'newTab';
+        else if (key === 't') action = e.shiftKey ? 'reopenTab' : 'newTab';
+        else if (key === 'k' && !e.shiftKey) action = 'palette';
+        else if (key === 'e' && !e.shiftKey) action = 'environment';
+        else if (key === 'c' && e.shiftKey) action = 'snippet';
+        else if (key === '/' || e.code === 'Slash') action = 'shortcuts';
         else if (key === 'w') action = 'closeTab';
         else if (key === 'tab') action = e.shiftKey ? 'prevTab' : 'nextTab';
         else if (key === 'pagedown') action = 'nextTab';
@@ -120,4 +125,122 @@ export function showMatch(container, index) {
         mark.classList.add('current');
         mark.scrollIntoView({ block: 'center', inline: 'nearest' });
     }
+}
+
+// ---------- {{variable}} inputs: highlight backdrop alignment and suggestions ----------
+
+const mirrored = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'wordSpacing', 'tabSize',
+    'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+    'textIndent', 'textTransform'];
+
+// Copies the input's text metrics to the backdrop so highlighted {{refs}} sit exactly under the typed text.
+export function attachVarHost(host) {
+    const field = host?.querySelector('input, textarea');
+    const backdrop = host?.querySelector('.var-backdrop');
+    if (!field || !backdrop || host.dataset.attached) return;
+    host.dataset.attached = '1';
+
+    const copy = () => {
+        const style = getComputedStyle(field);
+        for (const p of mirrored) backdrop.style[p] = style[p];
+        backdrop.style.borderStyle = 'solid';
+        backdrop.style.borderColor = 'transparent';
+    };
+    const sync = () => {
+        backdrop.scrollLeft = field.scrollLeft;
+        backdrop.scrollTop = field.scrollTop;
+    };
+    copy();
+    field.addEventListener('scroll', sync);
+    field.addEventListener('input', () => requestAnimationFrame(sync));
+    field.addEventListener('keyup', sync);
+    field.addEventListener('focus', copy);
+    field.addEventListener('input', () => suggest(host, field));
+    field.addEventListener('keydown', e => suggestKey(e, host, field), true);
+    field.addEventListener('blur', () => setTimeout(() => { if (suggestState?.field === field) closeSuggest(); }, 150));
+    new ResizeObserver(sync).observe(field);
+}
+
+let suggestState = null;
+
+function suggest(host, field) {
+    const before = field.value.slice(0, field.selectionStart ?? field.value.length);
+    const match = /\{\{\s*([^{}\s]*)$/.exec(before);
+    if (!match) return closeSuggest();
+
+    let names = [];
+    try { names = JSON.parse(host.dataset.vars || '[]'); } catch { }
+    const typed = match[1].toLowerCase();
+    const items = names.filter(n => n.toLowerCase().includes(typed))
+        .sort((a, b) => (a.toLowerCase().startsWith(typed) ? 0 : 1) - (b.toLowerCase().startsWith(typed) ? 0 : 1) || a.localeCompare(b))
+        .slice(0, 12);
+    if (items.length === 0) return closeSuggest();
+
+    let list = suggestState?.list;
+    if (!list) {
+        list = document.createElement('div');
+        list.className = 'var-suggest';
+        list.addEventListener('mousedown', e => {
+            const item = e.target.closest('[data-name]');
+            if (!item || !suggestState) return;
+            e.preventDefault();
+            accept(item.dataset.name);
+        });
+        document.body.appendChild(list);
+    }
+    suggestState = { list, field, items, index: 0, start: before.length - match[0].length };
+    render();
+
+    const r = host.getBoundingClientRect();
+    list.style.left = Math.min(r.left, window.innerWidth - 280) + 'px';
+    const below = r.bottom + 2;
+    list.style.top = (below + 240 > window.innerHeight ? Math.max(4, r.top - 2 - list.offsetHeight) : below) + 'px';
+}
+
+function render() {
+    const { list, items, index } = suggestState;
+    list.innerHTML = '';
+    items.forEach((name, i) => {
+        const el = document.createElement('div');
+        el.className = 'var-suggest-item' + (i === index ? ' active' : '') + (name.startsWith('$') ? ' dyn' : '');
+        el.dataset.name = name;
+        el.textContent = name;
+        list.appendChild(el);
+    });
+}
+
+function suggestKey(e, host, field) {
+    if (!suggestState || suggestState.field !== field) return;
+    const s = suggestState;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        s.index = (s.index + (e.key === 'ArrowDown' ? 1 : -1) + s.items.length) % s.items.length;
+        render();
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+        accept(s.items[s.index]);
+    } else if (e.key === 'Escape') {
+        closeSuggest();
+    } else {
+        return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+function accept(name) {
+    const { field, start } = suggestState;
+    const caret = field.selectionStart ?? field.value.length;
+    let after = field.value.slice(caret);
+    after = after.replace(/^[^{}\s]*\s*\}\}/, ''); // replace a reference that was already closed
+    const inserted = '{{' + name + '}}';
+    field.value = field.value.slice(0, start) + inserted + after;
+    const pos = start + inserted.length;
+    field.setSelectionRange(pos, pos);
+    closeSuggest();
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.focus();
+}
+
+function closeSuggest() {
+    suggestState?.list.remove();
+    suggestState = null;
 }

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ApiPin.Core\ApiPin.Core.csproj" />
+    <ProjectReference Include="..\..\tools\ApiPin.EchoServer\ApiPin.EchoServer.csproj" />
+    <ProjectReference Include="..\..\src\ApiPin.Cli\ApiPin.Cli.csproj" />
+  </ItemGroup>
+
+</Project>

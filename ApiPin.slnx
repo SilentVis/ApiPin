@@ -5,9 +5,11 @@
     <Project Path="src/ApiPin.UI/ApiPin.UI.csproj" />
     <Project Path="src/ApiPin.Desktop/ApiPin.Desktop.csproj" />
     <Project Path="src/ApiPin.Web/ApiPin.Web.csproj" />
+    <Project Path="src/ApiPin.Cli/ApiPin.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ApiPin.Core.Tests/ApiPin.Core.Tests.csproj" />
+    <Project Path="tests/ApiPin.IntegrationTests/ApiPin.IntegrationTests.csproj" />
     <Project Path="tests/ApiPin.Storage.Tests/ApiPin.Storage.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">

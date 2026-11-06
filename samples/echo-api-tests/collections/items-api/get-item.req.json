@@ -1,0 +1,30 @@
+{
+  "id": "a1d2c3b4-2222-4a2b-9c3d-000000000003",
+  "name": "Get item",
+  "method": "GET",
+  "url": "{{baseUrl}}/items/:id",
+  "queryParams": [],
+  "pathParams": [
+    { "enabled": true, "key": "id", "value": "{{itemId}}" }
+  ],
+  "headers": [],
+  "auth": {
+    "type": "inherit"
+  },
+  "body": {
+    "type": "none"
+  },
+  "settings": {
+    "timeoutMs": 30000,
+    "followRedirects": true,
+    "maxRedirects": 10,
+    "verifyTls": true,
+    "useCookieJar": true
+  },
+  "seq": 2,
+  "assertions": [
+    { "enabled": true, "kind": "status", "target": "", "operator": "equals", "expected": "200" },
+    { "enabled": true, "kind": "jsonPath", "target": "$.id", "operator": "equals", "expected": "{{itemId}}" },
+    { "enabled": true, "kind": "header", "target": "Content-Type", "operator": "contains", "expected": "application/json" }
+  ]
+}

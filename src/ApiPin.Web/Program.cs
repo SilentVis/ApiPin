@@ -5,6 +5,7 @@
 // arbitrary HTTP requests, so don't expose it on a network address without putting auth in front.
 
 using ApiPin.Storage;
+using ApiPin.Storage.Logging;
 using ApiPin.UI;
 using ApiPin.Web;
 
@@ -17,6 +18,8 @@ if (builder.Configuration["urls"] is null)
 // Serve the UI library's CSS/JS from the build output in any environment, not only Development.
 // Published output doesn't need this (the files are copied to wwwroot), and there it is a no-op.
 builder.WebHost.UseStaticWebAssets();
+
+builder.Logging.AddProvider(new FileLoggerProvider(Path.Combine(FileLoggerProvider.DefaultDirectory, "web")));
 
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 

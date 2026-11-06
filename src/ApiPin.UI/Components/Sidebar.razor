@@ -1,6 +1,7 @@
-@* Workspace header, filter and the collections tree. *@
+@* Workspace header, filter and the collections tree, with drag-and-drop to reorder and move. *@
 @inject WorkspaceState State
 @inject UiActions Actions
+@inject Overlays Overlays
 @implements IDisposable
 
 <aside class="sidebar">
@@ -11,9 +12,25 @@
         <button class="icon-btn" title="Workspace" @onclick='() => ToggleMenu(WorkspaceMenu)'>⋯</button>
         @if (_menu == WorkspaceMenu)
         {
-            @Menu(
-                ("Open or create workspace folder…", () => Actions.OpenWorkspaceAsync()),
-                ("Reload from disk", () => { State.Reload(); return Task.CompletedTask; }))
+            <div class="menu" role="menu">
+                <button class="menu-item" role="menuitem" @onclick="() => Run(Actions.OpenWorkspaceAsync)">Open or create workspace folder…</button>
+                <button class="menu-item" role="menuitem" @onclick="() => Run(() => { State.Reload(); return Task.CompletedTask; })">Reload from disk</button>
+                <button class="menu-item" role="menuitem" @onclick="() => Run(() => { Overlays.Show(Overlay.Import); return Task.CompletedTask; })">Import: Postman, OpenAPI, cURL…</button>
+                @if (State.RecentWorkspaces is { Count: > 0 } recent)
+                {
+                    <div class="menu-sep">Recent</div>
+                    @foreach (var path in recent)
+                    {
+                        <div class="menu-recent">
+                            <button class="menu-item" role="menuitem" title="@path" @onclick="() => Run(() => { State.OpenWorkspace(path); return Task.CompletedTask; })">
+                                <span>@Path.GetFileName(Path.TrimEndingDirectorySeparator(path))</span>
+                                <span class="muted menu-path">@path</span>
+                            </button>
+                            <button class="icon-btn" title="Remove from list" @onclick="() => State.ForgetRecent(path)" @onclick:stopPropagation="true">✕</button>
+                        </div>
+                    }
+                }
+            </div>
         }
     </div>
 
@@ -25,7 +42,16 @@
         </div>
     }
 
-    @if (State.Workspace is { } workspace)
+    <div class="segmented sidebar-views">
+        <button class="@(_view == "collections" ? "active" : null)" @onclick='() => _view = "collections"'>Collections</button>
+        <button class="@(_view == "history" ? "active" : null)" @onclick='() => _view = "history"'>History</button>
+    </div>
+
+    @if (_view == "history")
+    {
+        <HistoryPanel />
+    }
+    else if (State.Workspace is { } workspace)
     {
         <input class="sidebar-filter" type="search" placeholder="Filter requests" value="@_filter" @oninput="e => _filter = e.Value?.ToString() ?? string.Empty" />
 
@@ -36,7 +62,7 @@
             </div>
         }
 
-        <div class="tree" role="tree">
+        <div class="tree @(_drag is not null ? "dragging" : null)" role="tree">
             @if (workspace.Collections.Count == 0)
             {
                 <div class="tree-empty">
@@ -66,16 +92,39 @@
 
 @code {
     private static readonly Guid WorkspaceMenu = Guid.Empty;
+    private const double RowHeight = 28;
+
+    private enum DropPosition { Before, Into, After }
 
     private readonly HashSet<Guid> _expanded = [];
     private Guid? _menu;
+    private string _view = "collections";
+
+    /// <summary>Switches between the collections tree and history (command palette).</summary>
+    public void ShowView(string view)
+    {
+        _view = view;
+        StateHasChanged();
+    }
     private string _filter = "";
+
+    // Drag and drop: the item being dragged and where it would land.
+    private object? _drag;
+    private (object Target, DropPosition Position)? _drop;
+    private bool _skipRender;
 
     private bool Filtering => _filter.Trim().Length > 0;
 
     protected override void OnInitialized() => State.Changed += OnStateChanged;
 
     public void Dispose() => State.Changed -= OnStateChanged;
+
+    protected override bool ShouldRender()
+    {
+        if (!_skipRender) return true;
+        _skipRender = false;
+        return false;
+    }
 
     private void OnStateChanged()
     {
@@ -125,6 +174,108 @@
         State.CreateRequest(parent);
     }
 
+    // ---------- Drag and drop ----------
+
+    private void DragStart(object item)
+    {
+        _drag = item;
+        _drop = null;
+        _menu = null;
+    }
+
+    private void DragEnd()
+    {
+        _drag = null;
+        _drop = null;
+    }
+
+    /// <summary>Where the dragged item would land on <paramref name="target"/>, or null when it can't go there.</summary>
+    private DropPosition? PositionFor(object target, double offsetY)
+    {
+        var top = offsetY < RowHeight / 2;
+        switch (_drag, target)
+        {
+            case (RequestCollection, RequestCollection t) when !ReferenceEquals(_drag, t):
+                return top ? DropPosition.Before : DropPosition.After;
+            case (RequestCollection, _):
+                return null;
+
+            case (RequestDefinition r, RequestDefinition t) when !ReferenceEquals(r, t):
+                return top ? DropPosition.Before : DropPosition.After;
+            case (RequestDefinition, RequestFolder):
+                return DropPosition.Into;
+
+            case (RequestFolder f, RequestCollection t) when WorkspaceState.CanMove(f, t):
+                return DropPosition.Into;
+            case (RequestFolder f, RequestFolder t) when !ReferenceEquals(f, t) && State.ParentOf(t) is { } parent && WorkspaceState.CanMove(f, parent):
+                return offsetY < RowHeight * .3 ? DropPosition.Before
+                    : offsetY > RowHeight * .7 ? DropPosition.After
+                    : WorkspaceState.CanMove(f, t) ? DropPosition.Into : null;
+
+            default:
+                return null;
+        }
+    }
+
+    private void DragOver(DragEventArgs e, object target)
+    {
+        var position = _drag is null ? null : PositionFor(target, e.OffsetY);
+        (object, DropPosition)? next = position is { } p ? (target, p) : null;
+        if (Equals(next, _drop))
+        {
+            _skipRender = true; // dragover fires continuously; only re-render when the marker moves
+            return;
+        }
+        _drop = next;
+    }
+
+    private void Drop(object target)
+    {
+        var (drag, drop) = (_drag, _drop);
+        DragEnd();
+        if (drag is null || drop is not { } d || !ReferenceEquals(d.Target, target)) return;
+
+        switch (drag, target)
+        {
+            case (RequestCollection c, RequestCollection t):
+                State.Move(c, IndexAmong(State.Workspace!.OrderedCollections.ToList(), c, t, d.Position));
+                break;
+
+            case (RequestDefinition r, RequestDefinition t) when State.Find(t.Id) is { } location:
+                State.Move(r, location.Parent, IndexAmong(location.Parent.OrderedRequests.ToList(), r, t, d.Position));
+                break;
+
+            case (RequestDefinition r, RequestFolder f):
+                _expanded.Add(f.Id);
+                State.Move(r, f, int.MaxValue);
+                break;
+
+            case (RequestFolder f, RequestFolder t) when d.Position == DropPosition.Into:
+                _expanded.Add(t.Id);
+                State.Move(f, t, int.MaxValue);
+                break;
+
+            case (RequestFolder f, RequestFolder t) when State.ParentOf(t) is { } parent:
+                State.Move(f, parent, IndexAmong(parent.OrderedFolders.ToList(), f, t, d.Position));
+                break;
+        }
+    }
+
+    /// <summary>The insert index next to <paramref name="target"/>, counted without the item being moved.</summary>
+    private static int IndexAmong<T>(List<T> siblings, T moving, T target, DropPosition position) where T : class
+    {
+        siblings.Remove(moving);
+        var index = siblings.IndexOf(target);
+        return index < 0 ? siblings.Count : position == DropPosition.After ? index + 1 : index;
+    }
+
+    private string? DropClass(object target) =>
+        _drop is { } d && ReferenceEquals(d.Target, target)
+            ? d.Position switch { DropPosition.Before => "drop-before", DropPosition.After => "drop-after", _ => "drop-into" }
+            : null;
+
+    // ---------- Rendering ----------
+
     private RenderFragment Menu(params (string Label, Func<Task> Action)[] items) => __builder =>
     {
         <div class="menu" role="menu">
@@ -139,11 +290,19 @@
     {
         var expanded = IsExpanded(folder);
         var isCollection = folder is RequestCollection;
-        <div class="tree-row @(isCollection ? "collection" : "folder")" style="--depth:@depth" role="treeitem" aria-expanded="@(expanded ? "true" : "false")"
+        <div class="tree-row @(isCollection ? "collection" : "folder") @DropClass(folder) @(ReferenceEquals(_drag, folder) ? "drag-source" : null)"
+             style="--depth:@depth" role="treeitem" aria-expanded="@(expanded ? "true" : "false")"
+             draggable="@(Filtering ? "false" : "true")"
+             @ondragstart="() => DragStart(folder)" @ondragend="DragEnd"
+             @ondragover="e => DragOver(e, folder)" @ondragover:preventDefault="true" @ondrop="() => Drop(folder)" @ondrop:preventDefault="true"
              @onclick="() => Toggle(folder)" title="@folder.Name">
             <span class="chevron @(expanded ? "open" : null)">▸</span>
             <span class="node-icon">@(isCollection ? "▤" : "▭")</span>
             <span class="node-name">@folder.Name</span>
+            @if (folder.HasSettings)
+            {
+                <span class="settings-mark" title="Has its own headers, auth or variables">⚙</span>
+            }
             <button class="icon-btn row-action" title="More" @onclick="() => ToggleMenu(folder.Id)" @onclick:stopPropagation="true">⋯</button>
             @if (_menu == folder.Id)
             {
@@ -151,8 +310,10 @@
                     @if (folder is RequestCollection collection)
                     {
                         @Menu(
+                            ("Run collection…", () => { Overlays.Show(Overlay.Runner, folder.Id.ToString()); return Task.CompletedTask; }),
                             ("New request", () => { NewRequest(folder); return Task.CompletedTask; }),
                             ("New folder", () => NewFolder(folder)),
+                            ("Settings: headers, auth, variables…", () => Actions.EditSettingsAsync(folder)),
                             ("Rename…", () => Actions.RenameAsync(folder)),
                             ("Export as Postman v2.1…", () => Actions.ExportPostmanAsync(collection)),
                             ("Delete…", () => Actions.DeleteAsync(folder)))
@@ -160,8 +321,10 @@
                     else
                     {
                         @Menu(
+                            ("Run folder…", () => { Overlays.Show(Overlay.Runner, folder.Id.ToString()); return Task.CompletedTask; }),
                             ("New request", () => { NewRequest(folder); return Task.CompletedTask; }),
                             ("New folder", () => NewFolder(folder)),
+                            ("Settings: headers, auth, variables…", () => Actions.EditSettingsAsync(folder)),
                             ("Rename…", () => Actions.RenameAsync(folder)),
                             ("Delete…", () => Actions.DeleteAsync(folder)))
                     }
@@ -192,7 +355,11 @@
     {
         var tab = State.Tabs.FirstOrDefault(t => t.Request.Id == request.Id);
         var active = ReferenceEquals(tab, State.Active);
-        <div class="tree-row request @(active ? "active" : null)" style="--depth:@depth" role="treeitem" title="@request.Url"
+        <div class="tree-row request @(active ? "active" : null) @DropClass(request) @(ReferenceEquals(_drag, request) ? "drag-source" : null)"
+             style="--depth:@depth" role="treeitem" title="@request.Url"
+             draggable="@(Filtering ? "false" : "true")"
+             @ondragstart="() => DragStart(request)" @ondragend="DragEnd"
+             @ondragover="e => DragOver(e, request)" @ondragover:preventDefault="true" @ondrop="() => Drop(request)" @ondrop:preventDefault="true"
              @onclick="() => State.Open(request)">
             <span class="method-badge @Display.MethodClass(request.Method)">@Display.ShortMethod(request.Method)</span>
             <span class="node-name">@(string.IsNullOrWhiteSpace(request.Name) ? request.Url : request.Name)</span>

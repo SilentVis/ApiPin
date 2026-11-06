@@ -33,8 +33,16 @@
                     }
                     <input class="kv-key" value="@item.Key" placeholder="@(ghost ? KeyPlaceholder : null)" readonly="@KeysReadOnly"
                            list="@KeyListId" spellcheck="false" @oninput="e => Edit(item, e, static (i, v) => i.Key = v)" />
-                    <input class="kv-value" value="@item.Value" placeholder="@(ghost ? ValuePlaceholder : null)" spellcheck="false"
-                           @oninput="e => Edit(item, e, static (i, v) => i.Value = v)" />
+                    @if (Variables is not null)
+                    {
+                        <VarInput Class="kv-value" Value="@item.Value" Placeholder="@(ghost ? ValuePlaceholder : null)" Variables="Variables"
+                                  ValueChanged="v => Edit(item, new ChangeEventArgs { Value = v }, static (i, val) => i.Value = val)" />
+                    }
+                    else
+                    {
+                        <input class="kv-value" value="@item.Value" placeholder="@(ghost ? ValuePlaceholder : null)" spellcheck="false"
+                               @oninput="e => Edit(item, e, static (i, v) => i.Value = v)" />
+                    }
                     @if (ShowDescription)
                     {
                         <input class="kv-desc" value="@item.Description" placeholder="@(ghost ? "Description" : null)"
@@ -80,6 +88,9 @@
     [Parameter] public string KeyPlaceholder { get; set; } = "Key";
     [Parameter] public string ValuePlaceholder { get; set; } = "Value";
     [Parameter] public IReadOnlyList<string>? KeySuggestions { get; set; }
+
+    /// <summary>Variables in effect, to highlight {{refs}} in values; null for plain inputs.</summary>
+    [Parameter] public ApiPin.Core.Variables.VariableContext? Variables { get; set; }
 
     private readonly string _listId = "kv-" + Guid.NewGuid().ToString("N");
     private KeyValueItem _ghost = new();

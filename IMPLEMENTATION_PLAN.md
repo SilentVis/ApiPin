@@ -249,8 +249,8 @@ Effort is in **focused dev-days** for one developer. Each phase ends with a usab
 
 - [x] Create the solution, projects and `Directory.Build.props` / `Directory.Packages.props` (nullable on, warnings as errors)
 - [x] WPF host with `BlazorWebView` rendering a "Hello ApiPin" Razor component; Fluent UI theme wired (dark/light follows Windows) (plain CSS light/dark theme instead of Fluent UI)
-- [ ] DI composition root in `ApiPin.Desktop`; `ILogger` to a rolling file in `%APPDATA%\ApiPin\logs` (DI root done; file logging still to do)
-- [ ] **EchoServer** minimal API: `/echo` (returns method, headers, query, body), `/status/{code}`, `/delay/{ms}`, `/redirect/{n}`, `/auth/basic`, `/auth/bearer`, `/auth/apikey`, `/cookies/set`, `/upload`, `/large/{mb}`, `/oauth/token` (fake client-credentials server) (catch-all echo done; dedicated endpoints still to do)
+- [x] DI composition root in `ApiPin.Desktop`; `ILogger` to a rolling file in `%APPDATA%\ApiPin\logs` (one file per day, 14 days kept; unhandled exceptions are logged)
+- [x] **EchoServer** minimal API: `/echo` (returns method, headers, query, body), `/status/{code}`, `/delay/{ms}`, `/redirect/{n}`, `/auth/basic`, `/auth/bearer`, `/auth/apikey`, `/cookies/set`, `/upload`, `/large/{mb}`, `/oauth/token` (fake client-credentials server) (also password, refresh-token and auth-code + PKCE grants via `/oauth/authorize`, and `/oauth/me` as a protected resource; HTTPS on 7090 uses the ASP.NET dev certificate when present)
 - [x] GitHub Actions: restore → build → test on push/PR
 - [x] `README.md` with build/run instructions
 
@@ -260,11 +260,11 @@ Effort is in **focused dev-days** for one developer. Each phase ends with a usab
 
 - [x] Domain model (§3.3) with JSON round-trip tests
 - [x] URL parser that keeps `{{vars}}` and `:pathParams` intact; two-way sync between the URL and the query-params list
-- [ ] `VariableResolver`: scopes, dynamic vars, nesting, cycle detection, list of unresolved names
+- [x] `VariableResolver`: scopes, dynamic vars, nesting, cycle detection, list of unresolved names (scopes: runtime → environment → folders → collection → globals; dynamic vars also include `$randomUUID` and `$randomAlphaNumeric`)
 - [x] `HttpRequestBuilder`: method, URL encoding, headers (including restricted ones such as `Host`), all body types with correct `Content-Type` and multipart boundaries
 - [x] Auth providers: None, Basic, Bearer, API Key (header or query)
 - [x] `HttpExecutor`: handler pool, timeout, cancellation, decompression, timings, size, error mapping (DNS failure, connection refused, TLS error, timeout → friendly messages)
-- [ ] Integration tests against EchoServer, covering every body type and auth type (executor tests run against an in-process Kestrel server; body/auth types are covered by builder unit tests only)
+- [x] Integration tests against EchoServer, covering every body type and auth type (`tests/ApiPin.IntegrationTests` starts the real EchoServer in-process, with HTTPS on a throwaway self-signed certificate; Windows auth is not covered because the EchoServer has no Negotiate endpoint)
 
 **Exit criteria:** a unit/integration test can build any request from a `RequestDefinition` and get a correct `ResponseResult`. Core coverage ≥ 80%.
 
@@ -276,7 +276,7 @@ Effort is in **focused dev-days** for one developer. Each phase ends with a usab
 - [x] Request bar: method dropdown (with colour coding), URL box, **Send** / **Cancel** button; `Ctrl+Enter` sends
 - [x] Sub-tabs: **Params** (query + path), **Headers**, **Auth**, **Body**, **Settings**
 - [x] Reusable `KeyValueGrid` component: enable checkbox, key, value, description, bulk-edit text mode, auto-append empty row, common-header autocomplete
-- [x] Auth tab: type selector and forms for None / Inherit / Basic / Bearer / API Key (Inherit arrives with the `InheritanceResolver` in Phase 3)
+- [x] Auth tab: type selector and forms for None / Inherit / Basic / Bearer / API Key (Inherit came with the `InheritanceResolver` in Phase 3; new requests inherit by default)
 - [x] Body tab: none / raw (JSON, XML, text) in Monaco with **Format** button / form-urlencoded / multipart with file picker / binary file (plain text editor instead of Monaco)
 - [x] Response panel: status pill (colour by class), time, size; tabs **Body** (Pretty via Monaco read-only, Raw, Preview for HTML and images), **Headers**, **Cookies**, **Timings** (Pretty uses a built-in syntax highlighter instead of Monaco)
 - [x] Response actions: copy body, save to file, search in body
@@ -287,68 +287,68 @@ Effort is in **focused dev-days** for one developer. Each phase ends with a usab
 
 ### Phase 3 — Workspaces and collections (≈ 7–8 days)
 
-- [x] Open/create a workspace folder; reopen the last one on start (recent workspaces list still to do)
+- [x] Open/create a workspace folder; reopen the last one on start; recent workspaces in the sidebar's `⋯` menu
 - [x] `WorkspaceStore`: load/save collections, folders and requests per §3.5; atomic writes; stable JSON formatting
 - [x] Sidebar tree: collections → folders → requests with method badges; filter/search box
 - [x] CRUD: new collection/folder/request, rename (dialog), duplicate, delete (with confirmation)
-- [ ] **Drag-and-drop** reorder and move
+- [x] **Drag-and-drop** reorder and move (requests, folders and collections; files and folders move on disk)
 - [x] Save (`Ctrl+S`), dirty indicator on tabs, "Save as…" into a collection; prompt on closing unsaved tabs
-- [x] Export a collection as Postman Collection v2.1 (import stays in Phase 6)
-- [ ] Collection- and folder-level settings: headers, auth, variables, description (markdown)
-- [ ] `InheritanceResolver`: auth `inherit` walks up to folder → collection; headers merge (request wins on conflict)
-- [ ] `FileSystemWatcher` reloads changed files and flags conflicts with open dirty tabs
+- [x] Export a collection as Postman Collection v2.1 (import stays in Phase 6) (collection/folder auth and collection variables carry over; folder headers are added to each request since Postman has none)
+- [x] Collection- and folder-level settings: headers, auth, variables, description (markdown) (a settings dialog from the item's `⋯` menu; the description is stored as Markdown but edited as plain text)
+- [x] `InheritanceResolver`: auth `inherit` walks up to folder → collection; headers merge (request wins on conflict) (the request editor shows where inherited auth and headers come from; `RequestPreparer` runs inheritance, then variables, before sending)
+- [x] `FileSystemWatcher` reloads changed files and flags conflicts with open dirty tabs (unedited tabs pick up the new version; edited ones offer "use the version on disk" or "keep my changes")
 - [x] Storage tests: round-trip, rename/move on disk, corrupted-file handling (skip and report, never crash)
 
 **Exit criteria:** a collection created in ApiPin can be committed to Git, cloned on another machine and opened unchanged.
 
 ### Phase 4 — Environments and variables (≈ 5 days)
 
-- [ ] Environment files per §3.5; **environment picker** in the top bar; "No environment" option
-- [ ] Environment editor: grid with key, value, secret toggle, enabled; duplicate environment; globals editor
-- [ ] `SecretStore` using DPAPI; secret values never written to workspace files; "missing secret" indicator after cloning
-- [ ] Variable highlighting in the URL, headers and body editors: resolved = green with hover tooltip, unresolved = red
-- [ ] `{{` autocomplete listing the variables available in the current scope
-- [ ] "Resolved request preview" panel (final URL, headers, body after substitution; secrets masked)
-- [ ] Quick-look eye icon: shows all variables in effect and where each one comes from (env / collection / global)
+- [x] Environment files per §3.5; **environment picker** in the top bar; "No environment" option (the picked environment is kept per workspace in `.apipin/state.json`, which a generated `.gitignore` keeps out of Git)
+- [x] Environment editor: grid with key, value, secret toggle, enabled; duplicate environment; globals editor (globals live in `apipin.workspace.json`)
+- [x] `SecretStore` using DPAPI; secret values never written to workspace files; "missing secret" indicator after cloning (also for secret collection/folder variables and globals; keyed by a workspace id so copies don't mix)
+- [x] Variable highlighting in the URL, headers and body editors: resolved = green with hover tooltip, unresolved = red (also params and form fields; dynamic variables are blue)
+- [x] `{{` autocomplete listing the variables available in the current scope
+- [x] "Resolved request preview" panel (final URL, headers, body after substitution; secrets masked) (the request editor's **Resolved** tab, with undefined variables listed)
+- [x] Quick-look eye icon: shows all variables in effect and where each one comes from (env / collection / global) (overridden values are listed too)
 
 **Exit criteria:** switching `Local` ↔ `Staging` re-targets every request in a collection without edits, and no secret appears in `git diff`.
 
 ### Phase 5 — Advanced auth and connection options (≈ 5–6 days)
 
-- [ ] **OAuth 2.0 client credentials**: token URL, client ID/secret, scope, audience, credentials in body vs Basic header. Tokens cached until expiry and refreshed automatically; "Get new token" and "Clear token" buttons; token viewer that decodes JWT claims
-- [ ] **OAuth 2.0 authorization code + PKCE**: system browser + loopback redirect listener (`http://127.0.0.1:{port}/callback`); refresh-token support
-- [ ] **OAuth 2.0 password grant** (legacy, for older apps)
+- [x] **OAuth 2.0 client credentials**: token URL, client ID/secret, scope, audience, credentials in body vs Basic header. Tokens cached until expiry and refreshed automatically; "Get new token" and "Clear token" buttons; token viewer that decodes JWT claims (`TokenService` in Core; token requests use the request's TLS and certificate settings)
+- [x] **OAuth 2.0 authorization code + PKCE**: system browser + loopback redirect listener (`http://127.0.0.1:{port}/callback`); refresh-token support (default redirect `http://localhost:7890/callback`; the listener is a plain socket, so no URL ACL or admin rights; state is checked)
+- [x] **OAuth 2.0 password grant** (legacy, for older apps)
 - [x] **Windows / Negotiate (NTLM/Kerberos)** using current credentials or explicit ones
-- [ ] **Azure helper (optional):** "Use Azure CLI token" – runs `az account get-access-token --resource {{resource}}`, which is handy for APIs secured by Entra ID
-- [ ] Client certificates (mTLS): PFX file + password (secret) or a Windows certificate store thumbprint
-- [ ] Proxy settings: system proxy / custom / none, with bypass list
+- [x] **Azure helper (optional):** "Use Azure CLI token" – runs `az account get-access-token --resource {{resource}}`, which is handy for APIs secured by Entra ID (an auth type of its own; `--scope` is used for values ending in `/.default`; optional tenant)
+- [x] Client certificates (mTLS): PFX file + password (secret) or a Windows certificate store thumbprint (per request, in the Settings tab; the EchoServer's `/certs/client` shows what it received)
+- [x] Proxy settings: system proxy / custom / none, with bypass list (app-wide, in the new ⚙ Settings dialog; wildcard bypass entries and optional proxy credentials)
 - [x] HTTP version selection (1.1 / 2 / 3)
 
-**Exit criteria:** you can call an Entra-ID-protected API and a mutual-TLS endpoint without copying tokens by hand.
+**Exit criteria:** you can call an Entra-ID-protected API and a mutual-TLS endpoint without copying tokens by hand. (Verified against the EchoServer's OAuth server and mTLS endpoint and a faked Azure CLI; not yet against a real Entra ID tenant.)
 
 ### Phase 6 — Productivity (≈ 6–7 days)
 
-- [ ] **History**: every sent request + response summary (body optional, size-capped); searchable; "restore into new tab"; retention settings
-- [ ] **cURL import** (paste a `curl` command → a request) and **Copy as cURL**
-- [ ] **Code snippets**: C# `HttpClient`, PowerShell `Invoke-RestMethod`, JavaScript `fetch`, Python `requests`
-- [ ] **Postman collection v2.1 import**, including environments (migration path from Postman)
-- [ ] **OpenAPI 3 import** → collection, one request per operation, with example bodies (`Microsoft.OpenApi` library)
-- [ ] Cookie jar viewer/editor per environment
-- [ ] GraphQL body type: query + variables editors
-- [ ] Keyboard shortcut map and command palette (`Ctrl+K`)
-- [ ] Tab management: reorder, close others, reopen closed tab (`Ctrl+Shift+T`)
+- [x] **History**: every sent request + response summary (body optional, size-capped); searchable; "restore into new tab"; retention settings (rolling `history.jsonl` in app data; sidebar History view; retention in ⚙ Settings)
+- [x] **cURL import** (paste a `curl` command → a request) and **Copy as cURL** (paste into the URL bar or the Import dialog; bash and Windows cmd forms, as browsers copy them)
+- [x] **Code snippets**: C# `HttpClient`, PowerShell `Invoke-RestMethod`, JavaScript `fetch`, Python `requests` (plus cURL for bash and cmd; variables resolved or left as written)
+- [x] **Postman collection v2.1 import**, including environments (migration path from Postman) (v2.0 too; scripts and unsupported auth types are listed as warnings)
+- [x] **OpenAPI 3 import** → collection, one request per operation, with example bodies (`Microsoft.OpenApi` library) (JSON or YAML, Swagger 2.0 too; folders per tag, `{{baseUrl}}` from the first server, bodies from examples or generated from schemas, collection auth from the security scheme)
+- [x] Cookie jar viewer/editor per environment (cookies are stored from responses and sent automatically unless turned off per request; jars last until the app closes)
+- [x] GraphQL body type: query + variables editors
+- [x] Keyboard shortcut map and command palette (`Ctrl+K`) (commands, every saved request and environments; `Ctrl+/` for the map, `Ctrl+E` environments, `Ctrl+Shift+C` code)
+- [x] Tab management: reorder, close others, reopen closed tab (`Ctrl+Shift+T`) (drag tabs; right-click for close others / to the right / all, duplicate)
 
 **Exit criteria:** an existing Postman collection imports cleanly and the common daily flows are possible from the keyboard.
 
 ### Phase 7 — Chaining, assertions and CLI (≈ 6–7 days)
 
-- [ ] **Captures** (no scripting): after a response, set a variable from JSONPath / header / regex / status. Example: `login` → `$.accessToken` → `{{token}}`. Target scope: runtime or active environment
-- [ ] **Assertions** (declarative): status equals/in range, header exists/equals, JSONPath equals/contains/exists, response time < N ms, body matches a JSON Schema
-- [ ] Test results tab on the response panel (pass/fail list)
-- [ ] **Collection runner** in the UI: run a folder/collection in order with an environment, optional iteration count and delay; summary report
-- [ ] **`ApiPin.Cli`** as a `dotnet tool`: `apipin run ./my-api-tests --collection orders-api --env staging --reporter junit` (reuses Core + Storage), so the same collections run in CI pipelines (GitHub Actions / Azure DevOps)
+- [x] **Captures** (no scripting): after a response, set a variable from JSONPath / header / regex / status. Example: `login` → `$.accessToken` → `{{token}}`. Target scope: runtime or active environment (edited in the request's **Tests** tab)
+- [x] **Assertions** (declarative): status equals/in range, header exists/equals, JSONPath equals/contains/exists, response time < N ms, body matches a JSON Schema (also body contains/matches, < and >; expected values can use variables; JSONPath and JSON Schema are built-in subsets)
+- [x] Test results tab on the response panel (pass/fail list) (with captured values; the tab shows passed/total)
+- [x] **Collection runner** in the UI: run a folder/collection in order with an environment, optional iteration count and delay; summary report (from the item's `⋯` menu or the palette; stop at the first failure, per-step details, JUnit/JSON export, and the matching `apipin run` command)
+- [x] **`ApiPin.Cli`** as a `dotnet tool`: `apipin run ./my-api-tests --collection orders-api --env staging --reporter junit` (reuses Core + Storage), so the same collections run in CI pipelines (GitHub Actions / Azure DevOps) (console, JUnit and JSON reporters; `--folder`, `--var`, `APIPIN_VAR_*`, `--iterations`, `--delay`, `--bail`, `--insecure`, `--timeout`; exit codes 0 / 1 / 2)
 
-**Exit criteria:** the login → create → get → delete flow runs green both in the UI runner and in CI via the CLI.
+**Exit criteria:** the login → create → get → delete flow runs green both in the UI runner and in CI via the CLI. (Met: `samples/echo-api-tests` runs green against the EchoServer's token-protected `/items` API both in the UI runner and with `apipin run`.)
 
 ### Phase 8 — Packaging and release (≈ 3 days)
 

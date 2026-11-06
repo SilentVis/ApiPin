@@ -1,4 +1,5 @@
 using System.Text;
+using ApiPin.Core.Execution;
 using ApiPin.Core.Models;
 using ApiPin.UI.State;
 using Microsoft.JSInterop;
@@ -37,6 +38,16 @@ public sealed class UiActions(WorkspaceState state, DialogService dialogs, IPlat
         state.Close(tab);
     }
 
+    /// <summary>Closes several tabs, asking once when any of them has unsaved changes.</summary>
+    public async Task CloseManyAsync(IReadOnlyList<RequestTab> tabs)
+    {
+        var modified = tabs.Count(t => t.IsModified);
+        if (modified > 0 && !await dialogs.ConfirmAsync("Close tabs",
+                $"{modified} of these tabs {(modified == 1 ? "has" : "have")} unsaved changes. Close them and lose the changes?", "Close without saving", danger: true))
+            return;
+        foreach (var tab in tabs) state.Close(tab);
+    }
+
     public async Task NewCollectionAsync()
     {
         if (await dialogs.PromptAsync("New collection", "Name", "", "Create") is { } name) state.CreateCollection(name);
@@ -69,6 +80,14 @@ public sealed class UiActions(WorkspaceState state, DialogService dialogs, IPlat
     {
         if (await dialogs.ConfirmAsync("Delete request", $"Delete '{request.Name}'? Its file is removed from the workspace folder.", "Delete", danger: true))
             state.Delete(request);
+    }
+
+    /// <summary>Edits a folder's or collection's headers, auth, variables and description.</summary>
+    public async Task EditSettingsAsync(RequestFolder folder)
+    {
+        var parent = state.ParentOf(folder);
+        var parentAuth = parent is null ? null : InheritanceResolver.EffectiveAuth(new InheritAuth(), state.ChainOf(parent));
+        if (await dialogs.FolderSettingsAsync(folder, parentAuth) is { } settings) state.UpdateSettings(folder, settings);
     }
 
     public async Task ExportPostmanAsync(RequestCollection collection)

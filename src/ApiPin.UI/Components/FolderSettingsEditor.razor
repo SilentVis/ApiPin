@@ -1,0 +1,54 @@
+@* Headers, auth, variables and description of a folder or collection; edits a draft owned by the dialog. *@
+
+<nav class="subtabs modal-tabs">
+    @Section("headers", "Headers", D.Settings!.Headers.Count(h => h.IsActive))
+    @Section("auth", "Auth", D.Settings.Auth is InheritAuth or NoAuth ? 0 : 1)
+    @Section("variables", "Variables", D.Settings.Variables.Count(v => v.IsActive))
+    @Section("description", "Description", string.IsNullOrWhiteSpace(D.Settings.Description) ? 0 : 1)
+</nav>
+
+<div class="modal-body">
+    @switch (D.Section)
+    {
+        case "headers":
+            <p class="hint">Sent with every request in this @What. A request's own header with the same name wins.</p>
+            <KeyValueGrid Items="D.Settings.Headers" KeySuggestions="Display.CommonHeaders" KeyPlaceholder="Header" />
+            break;
+
+        case "auth":
+            <AuthEditor Auth="D.Settings.Auth" AuthChanged="a => D.Settings.Auth = a" Cache="D.AuthCache"
+                        AllowInherit="!D.IsCollection" Inherited="D.ParentAuth" />
+            <p class="hint">Requests and folders inside whose auth is <i>Inherit from parent</i> use this.</p>
+            break;
+
+        case "variables":
+            <p class="hint">
+                Usable as <code>{{name}}</code> by requests in this @What. Environment variables win over these@(D.IsCollection ? "" : ", and these win over the collection's").
+            </p>
+            <VariableGrid Items="D.Settings.Variables" />
+            <p class="hint">Secret values are stored encrypted on this computer, not in the workspace files.</p>
+            break;
+
+        case "description":
+            <textarea class="code-input description-input" rows="10" spellcheck="true" placeholder="Notes in Markdown"
+                      value="@D.Settings.Description" @oninput="e => D.Settings.Description = e.Value?.ToString()"></textarea>
+            break;
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public DialogRequest D { get; set; } = null!;
+
+    private string What => D.IsCollection ? "collection" : "folder";
+
+    private RenderFragment Section(string id, string label, int count) => __builder =>
+    {
+        <button class="subtab @(D.Section == id ? "active" : null)" @onclick="() => D.Section = id">
+            @label
+            @if (count > 0)
+            {
+                <span class="count">@count</span>
+            }
+        </button>
+    };
+}

@@ -1,0 +1,211 @@
+@* Captures (set variables from the response) and assertions (check it), as editable rows. *@
+@inject WorkspaceState State
+
+<h4 class="section-title">Captures</h4>
+<p class="hint">After the response arrives, set a variable for the requests that follow, e.g. <code>$.access_token</code> → <code>token</code>, then use <code>{{token}}</code>.</p>
+<div class="kv-grid tests captures">
+    <div class="kv-head"><span></span><span>Variable</span><span>From</span><span>Expression</span><span>Store in</span><span></span></div>
+    @foreach (var c in Request.Captures.Append(_ghostCapture))
+    {
+        var ghost = ReferenceEquals(c, _ghostCapture);
+        <div class="kv-row @(c.Enabled ? null : "off") @(ghost ? "ghost" : null)" @key="c">
+            <input type="checkbox" title="Enabled" checked="@c.Enabled" disabled="@ghost" @onchange="e => EditCapture(c, x => x.Enabled = e.Value is true)" />
+            <input class="kv-key" value="@c.Variable" placeholder="@(ghost ? "token" : null)" spellcheck="false" @oninput="e => EditCapture(c, x => x.Variable = Str(e))" />
+            <select value="@c.Source" @onchange="e => EditCapture(c, x => x.Source = Enum.Parse<CaptureSource>(Str(e)))">
+                <option value="@CaptureSource.JsonPath">JSONPath</option>
+                <option value="@CaptureSource.Header">Header</option>
+                <option value="@CaptureSource.Regex">Regex</option>
+                <option value="@CaptureSource.Status">Status</option>
+            </select>
+            @if (c.Source == CaptureSource.Status)
+            {
+                <span class="muted cell-note">status code</span>
+            }
+            else
+            {
+                <input value="@c.Expression" placeholder="@(ExpressionHint(c.Source))" spellcheck="false" @oninput="e => EditCapture(c, x => x.Expression = Str(e))" />
+            }
+            <select value="@c.Target" @onchange="e => EditCapture(c, x => x.Target = Enum.Parse<CaptureTarget>(Str(e)))">
+                <option value="@CaptureTarget.Runtime">Runtime</option>
+                <option value="@CaptureTarget.Environment">Environment</option>
+            </select>
+            @if (ghost)
+            {
+                <span></span>
+            }
+            else
+            {
+                <button class="icon-btn" title="Remove" @onclick="() => Remove(Request.Captures, c)">✕</button>
+            }
+        </div>
+    }
+</div>
+<p class="hint">Runtime values last until ApiPin closes (or the run ends in the CLI); environment values are saved to the active environment.</p>
+
+<h4 class="section-title">Assertions</h4>
+<div class="kv-grid tests assertions">
+    <div class="kv-head"><span></span><span>Check</span><span>Header / JSONPath</span><span>Operator</span><span>Expected</span><span></span></div>
+    @foreach (var a in Request.Assertions.Append(_ghostAssertion))
+    {
+        var ghost = ReferenceEquals(a, _ghostAssertion);
+        <div class="kv-row @(a.Enabled ? null : "off") @(ghost ? "ghost" : null)" @key="a">
+            <input type="checkbox" title="Enabled" checked="@a.Enabled" disabled="@ghost" @onchange="e => EditAssertion(a, x => x.Enabled = e.Value is true)" />
+            <select value="@a.Kind" @onchange="e => EditAssertion(a, x => SetKind(x, Enum.Parse<AssertionKind>(Str(e))))">
+                <option value="@AssertionKind.Status">Status</option>
+                <option value="@AssertionKind.Header">Header</option>
+                <option value="@AssertionKind.JsonPath">JSONPath</option>
+                <option value="@AssertionKind.ResponseTime">Response time (ms)</option>
+                <option value="@AssertionKind.Body">Body</option>
+                <option value="@AssertionKind.JsonSchema">JSON Schema</option>
+            </select>
+            @if (a.Kind is AssertionKind.Header or AssertionKind.JsonPath or AssertionKind.JsonSchema)
+            {
+                <input value="@a.Target" placeholder="@(a.Kind == AssertionKind.Header ? "Content-Type" : a.Kind == AssertionKind.JsonSchema ? "$ (whole body)" : "$.data.id")" spellcheck="false"
+                       @oninput="e => EditAssertion(a, x => x.Target = Str(e))" />
+            }
+            else
+            {
+                <span></span>
+            }
+            @if (a.Kind == AssertionKind.JsonSchema)
+            {
+                <span class="muted cell-note">matches</span>
+            }
+            else
+            {
+                <select value="@a.Operator" @onchange="e => EditAssertion(a, x => x.Operator = Enum.Parse<AssertionOperator>(Str(e)))">
+                    @foreach (var op in Operators(a.Kind))
+                    {
+                        <option value="@op">@OperatorLabel(op)</option>
+                    }
+                </select>
+            }
+            @if (a.Operator is AssertionOperator.Exists or AssertionOperator.NotExists && a.Kind != AssertionKind.JsonSchema)
+            {
+                <span></span>
+            }
+            else if (a.Kind == AssertionKind.JsonSchema)
+            {
+                <textarea class="schema-input" rows="1" spellcheck="false" placeholder="{ &quot;type&quot;: &quot;object&quot;, &quot;required&quot;: [&quot;id&quot;] }"
+                          value="@a.Expected" @oninput="e => EditAssertion(a, x => x.Expected = Str(e))"></textarea>
+            }
+            else
+            {
+                <input value="@a.Expected" placeholder="@(ExpectedHint(a))" spellcheck="false" @oninput="e => EditAssertion(a, x => x.Expected = Str(e))" />
+            }
+            @if (ghost)
+            {
+                <span></span>
+            }
+            else
+            {
+                <button class="icon-btn" title="Remove" @onclick="() => Remove(Request.Assertions, a)">✕</button>
+            }
+        </div>
+    }
+</div>
+<p class="hint">
+    Expected values can use <code>{{variables}}</code>. Results show in the response's <b>Tests</b> tab, and every assertion runs again
+    in the collection runner and in <code>apipin run</code>.
+</p>
+<div class="inline">
+    <button class="link-btn" @onclick="AddCommon">+ Status is 2xx and responds in under 1 s</button>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public RequestTab Tab { get; set; } = null!;
+
+    private RequestDefinition Request => Tab.Request;
+    private CaptureRule _ghostCapture = new();
+    private Assertion _ghostAssertion = new() { Kind = AssertionKind.Status, Expected = "" };
+
+    private static string Str(ChangeEventArgs e) => e.Value?.ToString() ?? "";
+
+    private void EditCapture(CaptureRule c, Action<CaptureRule> change)
+    {
+        change(c);
+        if (ReferenceEquals(c, _ghostCapture))
+        {
+            Request.Captures.Add(c);
+            _ghostCapture = new();
+        }
+        State.MarkDirty();
+    }
+
+    private void EditAssertion(Assertion a, Action<Assertion> change)
+    {
+        change(a);
+        if (ReferenceEquals(a, _ghostAssertion))
+        {
+            Request.Assertions.Add(a);
+            _ghostAssertion = new();
+        }
+        State.MarkDirty();
+    }
+
+    private void Remove<T>(List<T> list, T item)
+    {
+        list.Remove(item);
+        State.MarkDirty();
+    }
+
+    private void AddCommon()
+    {
+        Request.Assertions.Add(new Assertion { Kind = AssertionKind.Status, Operator = AssertionOperator.Between, Expected = "200-299" });
+        Request.Assertions.Add(new Assertion { Kind = AssertionKind.ResponseTime, Operator = AssertionOperator.LessThan, Expected = "1000" });
+        State.MarkDirty();
+    }
+
+    /// <summary>Changing the kind picks an operator that makes sense for it.</summary>
+    private static void SetKind(Assertion a, AssertionKind kind)
+    {
+        a.Kind = kind;
+        if (!Operators(kind).Contains(a.Operator)) a.Operator = Operators(kind)[0];
+        if (kind == AssertionKind.ResponseTime && a.Operator == AssertionOperator.Equals) a.Operator = AssertionOperator.LessThan;
+    }
+
+    private static AssertionOperator[] Operators(AssertionKind kind) => kind switch
+    {
+        AssertionKind.Status => [AssertionOperator.Equals, AssertionOperator.NotEquals, AssertionOperator.Between, AssertionOperator.LessThan, AssertionOperator.GreaterThan],
+        AssertionKind.ResponseTime => [AssertionOperator.LessThan, AssertionOperator.GreaterThan, AssertionOperator.Between],
+        AssertionKind.Body => [AssertionOperator.Contains, AssertionOperator.NotContains, AssertionOperator.Matches, AssertionOperator.Equals],
+        AssertionKind.JsonSchema => [AssertionOperator.Equals],
+        _ => [AssertionOperator.Equals, AssertionOperator.NotEquals, AssertionOperator.Contains, AssertionOperator.NotContains, AssertionOperator.Exists,
+              AssertionOperator.NotExists, AssertionOperator.Matches, AssertionOperator.LessThan, AssertionOperator.GreaterThan, AssertionOperator.Between],
+    };
+
+    private static string OperatorLabel(AssertionOperator op) => op switch
+    {
+        AssertionOperator.Equals => "equals",
+        AssertionOperator.NotEquals => "not equals",
+        AssertionOperator.Contains => "contains",
+        AssertionOperator.NotContains => "doesn't contain",
+        AssertionOperator.Exists => "exists",
+        AssertionOperator.NotExists => "doesn't exist",
+        AssertionOperator.LessThan => "less than",
+        AssertionOperator.GreaterThan => "greater than",
+        AssertionOperator.Matches => "matches regex",
+        AssertionOperator.Between => "between",
+        _ => op.ToString(),
+    };
+
+    private static string ExpressionHint(CaptureSource source) => source switch
+    {
+        CaptureSource.Header => "Location",
+        CaptureSource.Regex => "id=(\\d+)",
+        _ => "$.access_token",
+    };
+
+    private static string ExpectedHint(Assertion a) => a.Operator switch
+    {
+        AssertionOperator.Between => "200-299",
+        AssertionOperator.Matches => "^ok",
+        _ => a.Kind switch
+        {
+            AssertionKind.Status => "200",
+            AssertionKind.ResponseTime => "500",
+            AssertionKind.Header => "application/json",
+            _ => "value or {{variable}}",
+        },
+    };
+}

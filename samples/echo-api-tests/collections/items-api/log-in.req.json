@@ -1,0 +1,38 @@
+{
+  "id": "a1d2c3b4-2222-4a2b-9c3d-000000000001",
+  "name": "Log in",
+  "method": "POST",
+  "url": "{{baseUrl}}/oauth/token",
+  "queryParams": [],
+  "pathParams": [],
+  "headers": [],
+  "auth": {
+    "type": "none"
+  },
+  "body": {
+    "type": "form",
+    "fields": [
+      { "enabled": true, "key": "grant_type", "value": "password" },
+      { "enabled": true, "key": "client_id", "value": "apipin" },
+      { "enabled": true, "key": "client_secret", "value": "secret" },
+      { "enabled": true, "key": "username", "value": "user" },
+      { "enabled": true, "key": "password", "value": "pass" }
+    ]
+  },
+  "settings": {
+    "timeoutMs": 30000,
+    "followRedirects": true,
+    "maxRedirects": 10,
+    "verifyTls": true,
+    "useCookieJar": true
+  },
+  "seq": 0,
+  "captures": [
+    { "enabled": true, "variable": "token", "source": "jsonPath", "expression": "$.access_token", "target": "runtime" }
+  ],
+  "assertions": [
+    { "enabled": true, "kind": "status", "target": "", "operator": "equals", "expected": "200" },
+    { "enabled": true, "kind": "jsonPath", "target": "$.token_type", "operator": "equals", "expected": "Bearer" },
+    { "enabled": true, "kind": "responseTime", "target": "", "operator": "lessThan", "expected": "2000" }
+  ]
+}

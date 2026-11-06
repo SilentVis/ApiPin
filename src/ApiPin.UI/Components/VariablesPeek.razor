@@ -1,0 +1,61 @@
+@* Quick look: every variable the active tab can use, its value and where it comes from. *@
+@using ApiPin.Core.Variables
+@inject WorkspaceState State
+
+<div class="menu-backdrop" @onclick="OnClose"></div>
+<div class="peek" role="dialog" aria-label="Variables in effect">
+    <div class="peek-head">
+        <b>Variables in effect</b>
+        <span class="muted">for @State.Active.Title</span>
+        <span class="spacer"></span>
+        <button class="icon-btn" title="Show secret values" @onclick="() => _reveal = !_reveal">@(_reveal ? "Hide secrets" : "Show secrets")</button>
+    </div>
+    @if (_effective.Count == 0)
+    {
+        <p class="hint">No variables. Add them to an environment, a collection or folder, or the globals.</p>
+    }
+    else
+    {
+        <table class="table peek-table">
+            <thead><tr><th>Name</th><th>Value</th><th>From</th></tr></thead>
+            <tbody>
+                @foreach (var (v, shadowed) in _effective)
+                {
+                    <tr>
+                        <td class="mono">@v.Name</td>
+                        <td class="mono wrap">
+                            @Show(v)
+                            @foreach (var s in shadowed)
+                            {
+                                <div class="shadowed" title="Overridden">@Show(s) <span class="muted">(@Source(s))</span></div>
+                            }
+                        </td>
+                        <td class="muted nowrap">@Source(v)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    <p class="hint">Dynamic: @string.Join(" ", VariableResolver.DynamicVariables.Keys.Select(k => "{{" + k + "}}"))</p>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private IReadOnlyList<(ResolvedVariable Variable, IReadOnlyList<ResolvedVariable> Shadowed)> _effective = [];
+    private bool _reveal;
+
+    protected override void OnParametersSet() => _effective = State.VariablesFor(State.Active).Effective();
+
+    private string Show(ResolvedVariable v) =>
+        v.Secret && !_reveal ? (v.Value.Length == 0 ? "(missing secret)" : "••••••••") : v.Value;
+
+    public static string Source(ResolvedVariable v) => v.Source switch
+    {
+        VariableSource.Environment => $"env · {v.ScopeName}",
+        VariableSource.Folder => $"folder · {v.ScopeName}",
+        VariableSource.Collection => $"collection · {v.ScopeName}",
+        VariableSource.Global => "globals",
+        _ => "runtime",
+    };
+}

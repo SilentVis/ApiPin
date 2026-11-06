@@ -1,18 +1,45 @@
 @* Root component, hosted by ApiPin.Desktop (BlazorWebView) or ApiPin.Web (Blazor Server). *@
 @inject WorkspaceState State
 @inject UiActions Actions
+@inject Overlays Overlays
 @inject IJSRuntime JS
 @inject IPlatformServices Platform
 @implements IAsyncDisposable
 
 <div class="app">
     <header class="topbar">
-        <button class="icon-btn" title="@(_sidebar ? "Hide collections" : "Show collections")" @onclick="ToggleSidebar">☰</button>
+        <button class="icon-btn" title="@(_sidebar ? "Hide sidebar" : "Show sidebar")" @onclick="ToggleSidebar">☰</button>
         <span class="brand"><img class="brand-mark" src="_content/ApiPin.UI/icon.svg" alt="" />ApiPin</span>
+        <button class="palette-button" title="Command palette (Ctrl+K)" @onclick="() => Overlays.Show(Overlay.Palette)">
+            <span>Search commands and requests</span><kbd>Ctrl+K</kbd>
+        </button>
         <span class="spacer"></span>
-        <span class="muted shortcuts">
-            Ctrl+Enter send · Ctrl+S save · @(Platform.RunsInBrowser ? "Alt+T new tab · Alt+W close" : "Ctrl+T new tab · Ctrl+W close")
-        </span>
+        @if (State.Workspace is { } ws)
+        {
+            <span class="env-picker">
+                <select class="compact" title="Environment (Ctrl+E)" @key="_pickerKey" value="@(ws.ActiveEnvironmentId?.ToString() ?? NoEnvironment)" @onchange="OnEnvironmentChanged">
+                    <option value="@NoEnvironment">No environment</option>
+                    @foreach (var env in ws.OrderedEnvironments)
+                    {
+                        <option value="@env.Id">@env.Name</option>
+                    }
+                    <option value="@ManageEnvironments">Manage environments…</option>
+                </select>
+                @if (ws.ActiveEnvironment?.MissingSecrets.Count() is > 0 and var missing)
+                {
+                    <button class="badge warn as-button" title="Secret values aren't on this computer yet (e.g. after cloning). Enter them in the environment."
+                            @onclick="() => Overlays.Show(Overlay.Environments)">@missing secret@(missing == 1 ? "" : "s") missing</button>
+                }
+                <button class="icon-btn" title="Variables in effect" @onclick="() => _peek = !_peek">👁</button>
+                <button class="icon-btn" title="Cookie jar" @onclick="() => Overlays.Show(Overlay.Cookies)">🍪</button>
+            </span>
+            @if (_peek)
+            {
+                <VariablesPeek OnClose="() => _peek = false" />
+            }
+        }
+        <button class="icon-btn" title="Keyboard shortcuts (Ctrl+/)" @onclick="() => Overlays.Show(Overlay.Shortcuts)">⌨</button>
+        <button class="icon-btn" title="Settings: proxy, history, tokens" @onclick="() => Overlays.Show(Overlay.Settings)">⚙</button>
         <button class="icon-btn" title="@(_sideBySide ? "Stack request above response" : "Show request and response side by side")" @onclick="ToggleLayout">
             @(_sideBySide ? "⬒" : "◫")
         </button>
@@ -21,7 +48,7 @@
     <div class="main @(_sidebar ? "with-sidebar" : null)">
         @if (_sidebar)
         {
-            <Sidebar />
+            <Sidebar @ref="_sidebarRef" />
         }
         <div class="content">
             <TabStrip />
@@ -39,6 +66,33 @@
     </div>
 
     <DialogHost />
+    @switch (Overlays.Current)
+    {
+        case Overlay.Environments:
+            <EnvironmentManager OnClose="Overlays.Close" />
+            break;
+        case Overlay.Settings:
+            <AppSettingsDialog OnClose="Overlays.Close" />
+            break;
+        case Overlay.Import:
+            <ImportDialog />
+            break;
+        case Overlay.Snippet:
+            <SnippetDialog />
+            break;
+        case Overlay.Cookies:
+            <CookieJarDialog />
+            break;
+        case Overlay.Shortcuts:
+            <ShortcutsDialog />
+            break;
+        case Overlay.Runner:
+            <RunnerDialog />
+            break;
+        case Overlay.Palette:
+            <CommandPalette Commands="PaletteCommands()" />
+            break;
+    }
 </div>
 
 @code {
@@ -46,10 +100,36 @@
     private DotNetObjectReference<ApiPinApp>? _self;
     private ElementReference _workspace;
     private ElementReference _splitter;
+    private Sidebar? _sidebarRef;
     private bool _sideBySide;
     private bool _sidebar = true;
+    private bool _peek;
+    private int _pickerKey;
 
-    protected override void OnInitialized() => State.Changed += OnStateChanged;
+    private const string NoEnvironment = "none";
+    private const string ManageEnvironments = "manage";
+
+    private void OnEnvironmentChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        if (value == ManageEnvironments)
+        {
+            Overlays.Show(Overlay.Environments);
+            _pickerKey++; // re-create the select so it shows the active environment again
+            return;
+        }
+        State.SetActiveEnvironment(Guid.TryParse(value, out var id) ? id : null);
+    }
+
+    protected override void OnInitialized()
+    {
+        State.Changed += OnStateChanged;
+        State.ExternalChange += OnExternalChange;
+        Overlays.Changed += OnStateChanged;
+    }
+
+    // Files changed outside ApiPin (e.g. git pull): reload on this UI's thread.
+    private void OnExternalChange() => _ = InvokeAsync(State.ApplyExternalChanges);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -75,9 +155,79 @@
             case "saveAs": await Actions.SaveAsAsync(State.Active); break;
             case "newTab": State.NewTab(); break;
             case "closeTab": await Actions.CloseAsync(State.Active); break;
+            case "reopenTab": State.ReopenClosed(); break;
             case "nextTab": State.ActivateRelative(1); break;
             case "prevTab": State.ActivateRelative(-1); break;
+            case "palette": Overlays.Show(Overlays.Current == Overlay.Palette ? Overlay.None : Overlay.Palette); break;
+            case "environment": Overlays.Show(Overlay.Palette); break;
+            case "snippet": Overlays.Show(Overlay.Snippet); break;
+            case "shortcuts": Overlays.Show(Overlay.Shortcuts); break;
         }
+    }
+
+    private IReadOnlyList<CommandPalette.Command> PaletteCommands()
+    {
+        var mod = Platform.RunsInBrowser ? "Alt" : "Ctrl";
+        var commands = new List<CommandPalette.Command>
+        {
+            new("Send request", () => State.SendAsync(State.Active), Shortcut: "Ctrl+Enter"),
+            new("Save", () => Actions.SaveAsync(State.Active), Shortcut: "Ctrl+S"),
+            new("Save as…", () => Actions.SaveAsAsync(State.Active), Shortcut: "Ctrl+Shift+S"),
+            new("New tab", () => Do(() => State.NewTab()), Shortcut: $"{mod}+T"),
+            new("Close tab", () => Actions.CloseAsync(State.Active), Shortcut: $"{mod}+W"),
+            new("Close other tabs", () => Actions.CloseManyAsync(State.OthersThan(State.Active))),
+            new("Reopen closed tab", () => Do(State.ReopenClosed), Shortcut: $"{mod}+Shift+T"),
+            new("Duplicate tab", () => Do(() => State.Duplicate(State.Active))),
+            new("Code snippet: cURL, PowerShell, C#, JavaScript, Python", () => Do(() => Overlays.Show(Overlay.Snippet)), Shortcut: "Ctrl+Shift+C"),
+            new("Import: Postman, OpenAPI, cURL…", () => Do(() => Overlays.Show(Overlay.Import))),
+            new("Manage environments", () => Do(() => Overlays.Show(Overlay.Environments))),
+            new("Cookie jar", () => Do(() => Overlays.Show(Overlay.Cookies))),
+            new("Show history", () => Do(() => ShowSidebarView("history"))),
+            new("Show collections", () => Do(() => ShowSidebarView("collections"))),
+            new("New collection", Actions.NewCollectionAsync),
+            new("Open or create workspace folder…", Actions.OpenWorkspaceAsync),
+            new("Reload workspace from disk", () => Do(State.Reload)),
+            new("Settings", () => Do(() => Overlays.Show(Overlay.Settings))),
+            new("Keyboard shortcuts", () => Do(() => Overlays.Show(Overlay.Shortcuts)), Shortcut: "Ctrl+/"),
+            new("Clear runtime variables (captured values)", () => Do(State.ClearRuntimeVariables)),
+            new("Toggle sidebar", ToggleSidebar),
+            new("Toggle side-by-side layout", ToggleLayout),
+            new("No environment", () => Do(() => State.SetActiveEnvironment(null)), Group: "Environment"),
+        };
+        if (State.Workspace is { } ws)
+        {
+            commands.AddRange(ws.OrderedEnvironments.Select(env =>
+                new CommandPalette.Command(env.Name, () => Do(() => State.SetActiveEnvironment(env.Id)), Group: "Environment",
+                    Detail: env.Id == ws.ActiveEnvironmentId ? "active" : null)));
+            foreach (var collection in ws.OrderedCollections)
+            {
+                commands.Add(new(collection.Name, () => Do(() => Overlays.Show(Overlay.Runner, collection.Id.ToString())), Group: "Run"));
+                foreach (var (request, path) in RequestsWithPath(collection, collection.Name))
+                    commands.Add(new(string.IsNullOrWhiteSpace(request.Name) ? request.Url : request.Name, () => Do(() => State.Open(request)),
+                        Group: request.Method.ToUpperInvariant(), Detail: path));
+            }
+        }
+        return commands;
+    }
+
+    private static IEnumerable<(RequestDefinition, string)> RequestsWithPath(RequestFolder folder, string path)
+    {
+        foreach (var r in folder.OrderedRequests) yield return (r, path);
+        foreach (var sub in folder.OrderedFolders)
+            foreach (var x in RequestsWithPath(sub, $"{path} / {sub.Name}")) yield return x;
+    }
+
+    private static Task Do(Action action)
+    {
+        action();
+        return Task.CompletedTask;
+    }
+
+    private void ShowSidebarView(string view)
+    {
+        _sidebar = true;
+        StateHasChanged();
+        _ = InvokeAsync(() => _sidebarRef?.ShowView(view));
     }
 
     private async Task ToggleLayout()
@@ -97,6 +247,8 @@
     public async ValueTask DisposeAsync()
     {
         State.Changed -= OnStateChanged;
+        State.ExternalChange -= OnExternalChange;
+        Overlays.Changed -= OnStateChanged;
         try
         {
             if (_module is not null)

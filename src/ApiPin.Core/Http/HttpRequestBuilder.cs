@@ -151,8 +151,28 @@ public static class HttpRequestBuilder
             form.Fields.Where(f => f.IsActive).Select(f => KeyValuePair.Create(f.Key, f.Value))),
         MultipartBody multipart => BuildMultipart(multipart),
         BinaryFileBody binary => BuildFileContent(binary.FilePath, binary.ContentType),
+        GraphQlBody graphql => new StringContent(GraphQlJson(graphql), Encoding.UTF8, "application/json"),
         _ => null,
     };
+
+    /// <summary>The JSON a GraphQL server expects; variables must be a JSON object.</summary>
+    public static string GraphQlJson(GraphQlBody body)
+    {
+        var payload = new System.Text.Json.Nodes.JsonObject { ["query"] = body.Query };
+        if (body.Variables.Trim().Length > 0)
+        {
+            try
+            {
+                payload["variables"] = System.Text.Json.Nodes.JsonNode.Parse(body.Variables, documentOptions: new() { AllowTrailingCommas = true, CommentHandling = System.Text.Json.JsonCommentHandling.Skip });
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                throw new RequestBuildException($"GraphQL variables are not valid JSON: {ex.Message}");
+            }
+        }
+        if (!string.IsNullOrWhiteSpace(body.OperationName)) payload["operationName"] = body.OperationName.Trim();
+        return payload.ToJsonString();
+    }
 
     private static MultipartFormDataContent BuildMultipart(MultipartBody body)
     {

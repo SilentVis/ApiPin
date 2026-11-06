@@ -1,0 +1,115 @@
+@* Ctrl+K: type to find a command, a saved request or an environment. *@
+@inject Overlays Overlays
+
+<div class="modal-backdrop palette-backdrop" @onclick="Overlays.Close">
+    <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette" @onclick:stopPropagation="true">
+        <input class="palette-input" placeholder="Type a command, request or environment…" value="@_query" spellcheck="false" autocomplete="off"
+               @oninput="OnInput" @onkeydown="OnKey" @ref="_input" />
+        <div class="palette-list" role="listbox">
+            @if (_matches.Count == 0)
+            {
+                <div class="palette-empty muted">No matches.</div>
+            }
+            @for (var i = 0; i < _matches.Count; i++)
+            {
+                var index = i;
+                var c = _matches[i];
+                <div class="palette-item @(index == _selected ? "active" : null)" role="option" aria-selected="@(index == _selected)"
+                     @onclick="() => Run(c)" @onmousemove="() => _selected = index">
+                    @if (c.Group is not null)
+                    {
+                        <span class="palette-group">@c.Group</span>
+                    }
+                    <span class="palette-label">@c.Label</span>
+                    @if (c.Detail is not null)
+                    {
+                        <span class="muted palette-detail">@c.Detail</span>
+                    }
+                    <span class="spacer"></span>
+                    @if (c.Shortcut is not null)
+                    {
+                        <kbd>@c.Shortcut</kbd>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    public sealed record Command(string Label, Func<Task> Run, string? Group = null, string? Shortcut = null, string? Detail = null);
+
+    [Parameter, EditorRequired] public IReadOnlyList<Command> Commands { get; set; } = [];
+
+    private const int MaxShown = 60;
+    private string _query = "";
+    private List<Command> _matches = [];
+    private int _selected;
+    private ElementReference _input;
+    private bool _focused;
+
+    protected override void OnParametersSet() => Filter();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focused) return;
+        _focused = true;
+        try { await _input.FocusAsync(); }
+        catch (InvalidOperationException) { }
+    }
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        _query = e.Value?.ToString() ?? "";
+        _selected = 0;
+        Filter();
+    }
+
+    private void Filter()
+    {
+        var q = _query.Trim();
+        _matches = q.Length == 0
+            ? Commands.Where(c => c.Group is null).Take(MaxShown).ToList()
+            : Commands.Select(c => (c, Score: Score($"{c.Group} {c.Label} {c.Detail}", q)))
+                .Where(x => x.Score > 0)
+                .OrderByDescending(x => x.Score)
+                .Take(MaxShown)
+                .Select(x => x.c)
+                .ToList();
+    }
+
+    /// <summary>Fuzzy match: every character in order; whole-word and prefix hits score higher. 0 = no match.</summary>
+    internal static int Score(string text, string query)
+    {
+        if (text.Contains(query, StringComparison.OrdinalIgnoreCase))
+            return 1000 - text.IndexOf(query, StringComparison.OrdinalIgnoreCase);
+        var score = 0;
+        var pos = 0;
+        foreach (var ch in query)
+        {
+            if (char.IsWhiteSpace(ch)) continue;
+            var found = text.IndexOf(ch.ToString(), pos, StringComparison.OrdinalIgnoreCase);
+            if (found < 0) return 0;
+            score += found == pos ? 5 : found > 0 && !char.IsLetterOrDigit(text[found - 1]) ? 3 : 1;
+            pos = found + 1;
+        }
+        return score;
+    }
+
+    private void OnKey(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown" when _matches.Count > 0: _selected = (_selected + 1) % _matches.Count; break;
+            case "ArrowUp" when _matches.Count > 0: _selected = (_selected - 1 + _matches.Count) % _matches.Count; break;
+            case "Enter" when _matches.Count > 0: _ = Run(_matches[Math.Min(_selected, _matches.Count - 1)]); break;
+            case "Escape": Overlays.Close(); break;
+        }
+    }
+
+    private async Task Run(Command command)
+    {
+        Overlays.Close();
+        await command.Run();
+    }
+}

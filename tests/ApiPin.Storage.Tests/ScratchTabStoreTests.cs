@@ -47,7 +47,7 @@ public sealed class ScratchTabStoreTests : IDisposable
 
         Assert.Equal(("DELETE", "7", 5, false, "1.1"),
             (loaded.Tabs[4].Method, loaded.Tabs[4].PathParams[0].Value, loaded.Tabs[4].Settings.TimeoutMs, loaded.Tabs[4].Settings.VerifyTls, loaded.Tabs[4].Settings.HttpVersion));
-        Assert.IsType<NoAuth>(loaded.Tabs[4].Auth);
+        Assert.IsType<InheritAuth>(loaded.Tabs[4].Auth);
         Assert.IsType<NoBody>(loaded.Tabs[4].Body);
     }
 

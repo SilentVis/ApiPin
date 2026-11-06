@@ -1,5 +1,7 @@
+@using ApiPin.Core.Execution
 @inject WorkspaceState State
 @inject UiActions Actions
+@inject Overlays Overlays
 
 <div class="request-editor">
     <div class="name-row">
@@ -27,7 +29,17 @@
         <button class="btn ghost" title="Save a copy into a collection (Ctrl+Shift+S)" disabled="@(State.Workspace is null)"
                 @onclick="() => Actions.SaveAsAsync(Tab)">Save as…</button>
         <button class="btn ghost" title="Duplicate this request in a new tab" @onclick="() => State.Duplicate(Tab)">Duplicate</button>
+        <button class="btn ghost" title="Code snippet: cURL, PowerShell, C#, JavaScript, Python (Ctrl+Shift+C)" @onclick="() => Overlays.Show(Overlay.Snippet)">Code</button>
     </div>
+
+    @if (Tab.HasConflict)
+    {
+        <div class="banner warn conflict">
+            <span>This request changed on disk (for example after a git pull) while you were editing it.</span>
+            <button class="btn ghost" @onclick="() => State.UseVersionOnDisk(Tab)">Use the version on disk</button>
+            <button class="btn ghost" @onclick="() => State.KeepMyVersion(Tab)">Keep my changes</button>
+        </div>
+    }
 
     <div class="request-bar">
         @if (_customMethod)
@@ -49,8 +61,8 @@
                 <option value="@CustomOption">Custom…</option>
             </select>
         }
-        <input class="url-input" value="@Request.Url" placeholder="https://localhost:5001/api/orders/:id?expand=items"
-               spellcheck="false" autocomplete="off" @oninput="OnUrlChanged" />
+        <VarInput HostClass="url-host" Class="url-input" Value="@Request.Url" Placeholder="{{baseUrl}}/api/orders/:id?expand=items"
+                  Variables="Vars" ValueChanged="OnUrlChanged" />
         @if (Tab.IsSending)
         {
             <button class="btn danger send-btn" @onclick="() => State.Cancel(Tab)">Cancel</button>
@@ -63,10 +75,12 @@
 
     <nav class="subtabs">
         @Section("params", "Params", ActiveCount(Request.QueryParams) + ActiveCount(Request.PathParams))
-        @Section("headers", "Headers", ActiveCount(Request.Headers))
-        @Section("auth", "Auth", Request.Auth is NoAuth ? 0 : 1, dot: true)
+        @Section("headers", "Headers", ActiveCount(Request.Headers) + Inherited.Count(h => !h.Overridden))
+        @Section("auth", "Auth", EffectiveAuth.Auth is NoAuth ? 0 : 1, dot: true)
         @Section("body", "Body", Request.Body is NoBody ? 0 : 1, dot: true)
         @Section("settings", "Settings", Request.Settings.VerifyTls ? 0 : 1, dot: true)
+        @Section("tests", "Tests", Request.Captures.Count(c => c.Enabled) + Request.Assertions.Count(a => a.Enabled))
+        @Section("resolved", "Resolved", 0)
     </nav>
 
     <div class="subtab-body">
@@ -74,12 +88,12 @@
         {
             case "params":
                 <h4 class="section-title">Query parameters</h4>
-                <KeyValueGrid Items="Request.QueryParams" OnChanged="OnQueryParamsChanged" />
+                <KeyValueGrid Items="Request.QueryParams" OnChanged="OnQueryParamsChanged" Variables="Vars" />
                 @if (Request.PathParams.Count > 0)
                 {
                     <h4 class="section-title">Path parameters</h4>
                     <KeyValueGrid Items="Request.PathParams" OnChanged="State.MarkDirty" AllowAdd="false" KeysReadOnly="true"
-                                  KeyHeader="Name" ValuePlaceholder="Value" />
+                                  KeyHeader="Name" ValuePlaceholder="Value" Variables="Vars" />
                 }
                 else
                 {
@@ -88,20 +102,49 @@
                 break;
 
             case "headers":
-                <KeyValueGrid Items="Request.Headers" OnChanged="State.MarkDirty" KeySuggestions="Display.CommonHeaders" KeyPlaceholder="Header" />
+                <KeyValueGrid Items="Request.Headers" OnChanged="State.MarkDirty" KeySuggestions="Display.CommonHeaders" KeyPlaceholder="Header" Variables="Vars" />
+                @if (Inherited.Count > 0)
+                {
+                    <h4 class="section-title">Inherited</h4>
+                    <table class="table inherited">
+                        <tbody>
+                            @foreach (var h in Inherited)
+                            {
+                                <tr class="@(h.Overridden ? "overridden" : null)" title="@(h.Overridden ? "Overridden by a header with the same name closer to this request" : null)">
+                                    <td class="mono">@h.Header.Key</td>
+                                    <td class="mono wrap">@h.Header.Value</td>
+                                    <td class="muted">from @h.From.Name</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
                 <p class="hint">Added automatically unless set here: @string.Join(" · ", AutoHeaders())</p>
                 break;
 
             case "auth":
-                <AuthEditor Tab="Tab" />
+                <AuthEditor Auth="Request.Auth" AuthChanged="OnAuthChanged" OnEdited="State.MarkDirty" Cache="Tab.AuthCache"
+                            Inherited="InheritanceResolver.EffectiveAuth(new InheritAuth(), Chain)" HasParent="Chain.Count > 0" />
+                @if (ApiPin.Core.Auth.TokenService.Handles(EffectiveAuth.Auth))
+                {
+                    <TokenPanel Tab="Tab" />
+                }
                 break;
 
             case "body":
-                <BodyEditor Tab="Tab" />
+                <BodyEditor Tab="Tab" Variables="Vars" />
                 break;
 
             case "settings":
                 <SettingsEditor Tab="Tab" />
+                break;
+
+            case "tests":
+                <TestsEditor Tab="Tab" />
+                break;
+
+            case "resolved":
+                <ResolvedPreview Tab="Tab" />
                 break;
         }
     </div>
@@ -113,6 +156,15 @@
     [Parameter, EditorRequired] public RequestTab Tab { get; set; } = null!;
 
     private RequestDefinition Request => Tab.Request;
+    private IReadOnlyList<RequestFolder> Chain => State.ChainFor(Tab);
+    private IReadOnlyList<InheritedHeader> Inherited => InheritanceResolver.InheritedHeaders(Request.Headers, Chain);
+    private InheritedAuth EffectiveAuth => InheritanceResolver.EffectiveAuth(Request.Auth, Chain);
+
+    private void OnAuthChanged(AuthConfig auth)
+    {
+        Request.Auth = auth;
+        State.MarkDirty();
+    }
     private string MethodValue => Request.Method.Trim().ToUpperInvariant() is { Length: > 0 } m ? m : "GET";
 
     private bool _customMethod;
@@ -168,9 +220,33 @@
         State.MarkDirty();
     }
 
-    private void OnUrlChanged(ChangeEventArgs e)
+    private ApiPin.Core.Variables.VariableContext Vars => _vars ??= State.VariablesFor(Tab);
+    private ApiPin.Core.Variables.VariableContext? _vars;
+
+    protected override void OnParametersSet() => _vars = null;
+
+    protected override bool ShouldRender()
     {
-        Request.Url = e.Value?.ToString() ?? "";
+        _vars = null; // variables may have changed (environment switched, settings saved)
+        return true;
+    }
+
+    private void OnUrlChanged(string url)
+    {
+        // Pasting a curl command into the URL bar turns it into the request.
+        if (ApiPin.Core.Conversion.CurlParser.LooksLikeCurl(url))
+        {
+            try
+            {
+                State.ApplyCurl(Tab, ApiPin.Core.Conversion.CurlParser.Parse(url));
+                return;
+            }
+            catch (ApiPin.Core.Conversion.CurlParseException)
+            {
+                // Still typing it: keep the text as the URL for now.
+            }
+        }
+        Request.Url = url;
         Request.QueryParams = UrlTools.SyncQueryParams(Request.Url, Request.QueryParams);
         Request.PathParams = UrlTools.SyncPathParams(Request.Url, Request.PathParams);
         State.MarkDirty();
@@ -189,8 +265,9 @@
         if (!Has("User-Agent")) yield return $"User-Agent: {HttpRequestBuilder.DefaultUserAgent}";
         if (!Has("Accept")) yield return "Accept: */*";
         if (!Has("Content-Type") && ContentTypeFromBody() is { } ct) yield return $"Content-Type: {ct}";
-        if (!Has("Authorization") && Request.Auth is BasicAuth or BearerAuth) yield return "Authorization (from Auth tab)";
-        if (Request.Auth is ApiKeyAuth { Location: ApiKeyLocation.Header } k && k.Key.Length > 0 && !Has(k.Key)) yield return $"{k.Key} (from Auth tab)";
+        var auth = EffectiveAuth.Auth;
+        if (!Has("Authorization") && auth is BasicAuth or BearerAuth) yield return "Authorization (from Auth tab)";
+        if (auth is ApiKeyAuth { Location: ApiKeyLocation.Header } k && k.Key.Length > 0 && !Has(k.Key)) yield return $"{k.Key} (from Auth tab)";
         yield return "Host, Content-Length";
     }
 

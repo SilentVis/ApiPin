@@ -1,0 +1,125 @@
+@* App-wide settings: the proxy for outgoing requests, and cached tokens. *@
+@using ApiPin.Core.Auth
+@using ApiPin.Storage
+@inject AppSettingsStore Settings
+@inject TokenService Tokens
+@inject WorkspaceState State
+
+<div class="modal-backdrop">
+    <div class="modal wide app-settings" role="dialog" aria-modal="true" aria-label="Settings" @onkeydown="OnKey">
+        <h3>Settings</h3>
+
+        <h4 class="section-title">Proxy</h4>
+        <div class="form">
+            <label class="field">
+                <span>Proxy</span>
+                <select value="@_proxy.Mode" @onchange="e => _proxy = _proxy with { Mode = Enum.Parse<ProxyMode>(e.Value?.ToString() ?? nameof(ProxyMode.System)) }">
+                    <option value="@ProxyMode.System">Use the system proxy</option>
+                    <option value="@ProxyMode.None">No proxy</option>
+                    <option value="@ProxyMode.Custom">Custom proxy</option>
+                </select>
+            </label>
+            @if (_proxy.Mode == ProxyMode.Custom)
+            {
+                <label class="field">
+                    <span>Proxy URL</span>
+                    <input value="@_proxy.Url" placeholder="http://proxy.corp.example:8080" spellcheck="false" @oninput="e => _proxy = _proxy with { Url = Str(e) }" />
+                </label>
+                <label class="field">
+                    <span>Bypass for</span>
+                    <input value="@_proxy.Bypass" placeholder="*.corp.local, 10.0.*" spellcheck="false" @oninput="e => _proxy = _proxy with { Bypass = Str(e) }" />
+                </label>
+                <label class="check">
+                    <input type="checkbox" checked="@_proxy.BypassLocal" @onchange="e => _proxy = _proxy with { BypassLocal = e.Value is true }" />
+                    Go direct to localhost and local addresses
+                </label>
+                <label class="field">
+                    <span>Username</span>
+                    <input value="@_proxy.Username" placeholder="optional" spellcheck="false" autocomplete="off" @oninput="e => _proxy = _proxy with { Username = Str(e) }" />
+                </label>
+                <SecretField Label="Password" Value="@_proxy.Password" ValueChanged="v => _proxy = _proxy with { Password = v }" />
+                <p class="hint">Proxy credentials are kept in app data on this computer (settings.json), not in any workspace.</p>
+            }
+            else if (_proxy.Mode == ProxyMode.System)
+            {
+                <p class="hint">Uses Windows' proxy settings (or HTTP_PROXY / HTTPS_PROXY / NO_PROXY when set).</p>
+            }
+        </div>
+
+        <h4 class="section-title">History</h4>
+        <div class="form">
+            <label class="check">
+                <input type="checkbox" checked="@_history.Enabled" @onchange="e => _history = _history with { Enabled = e.Value is true }" />
+                Keep a history of sent requests
+            </label>
+            @if (_history.Enabled)
+            {
+                <label class="field">
+                    <span>Keep</span>
+                    <span class="inline">
+                        <input type="number" class="narrow" min="10" max="10000" value="@_history.MaxEntries" @onchange="e => _history = _history with { MaxEntries = Int(e, _history.MaxEntries, 10, 10000) }" />
+                        <span class="muted">requests, for at most</span>
+                        <input type="number" class="narrow" min="1" max="365" value="@_history.MaxDays" @onchange="e => _history = _history with { MaxDays = Int(e, _history.MaxDays, 1, 365) }" />
+                        <span class="muted">days</span>
+                    </span>
+                </label>
+                <label class="check">
+                    <input type="checkbox" checked="@_history.SaveBodies" @onchange="e => _history = _history with { SaveBodies = e.Value is true }" />
+                    Keep response bodies (up to
+                    <input type="number" class="narrow" min="1" max="10240" value="@_history.MaxBodyKb" @onchange="e => _history = _history with { MaxBodyKb = Int(e, _history.MaxBodyKb, 1, 10240) }" />
+                    KB each)
+                </label>
+                <p class="hint">History is stored in app data on this computer (history.jsonl), never in the workspace.</p>
+            }
+        </div>
+
+        <h4 class="section-title">Tokens</h4>
+        <div class="inline">
+            <button class="btn" @onclick="ClearTokens">Clear all cached tokens</button>
+            @if (_cleared)
+            {
+                <span class="muted">Cleared. New tokens are fetched on the next send.</span>
+            }
+        </div>
+
+        <div class="modal-actions">
+            <button class="btn" @onclick="OnClose">Cancel</button>
+            <button class="btn primary" @onclick="Save">Save</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private ProxySettings _proxy = new();
+    private HistorySettings _history = new();
+
+    private static int Int(ChangeEventArgs e, int fallback, int min, int max) =>
+        int.TryParse(e.Value?.ToString(), out var v) ? Math.Clamp(v, min, max) : fallback;
+    private bool _cleared;
+
+    protected override void OnInitialized()
+    {
+        var settings = Settings.Load();
+        _proxy = settings.Proxy;
+        _history = settings.History;
+    }
+
+    private static string Str(ChangeEventArgs e) => e.Value?.ToString() ?? "";
+
+    private void ClearTokens()
+    {
+        Tokens.ClearAll();
+        _cleared = true;
+    }
+
+    private async Task Save()
+    {
+        Settings.Save(Settings.Load() with { Proxy = _proxy, History = _history });
+        State.History.Apply(_history);
+        await OnClose.InvokeAsync();
+    }
+
+    private Task OnKey(KeyboardEventArgs e) => e.Key == "Escape" ? OnClose.InvokeAsync() : Task.CompletedTask;
+}

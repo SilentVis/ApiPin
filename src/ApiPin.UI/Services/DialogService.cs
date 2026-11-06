@@ -1,6 +1,9 @@
+using ApiPin.Core.Execution;
+using ApiPin.Core.Models;
+
 namespace ApiPin.UI.Services;
 
-public enum DialogKind { Prompt, Confirm, SaveAs }
+public enum DialogKind { Prompt, Confirm, SaveAs, FolderSettings }
 
 /// <summary>A folder offered as a save target, with its full path for display.</summary>
 public sealed record SaveTarget(Guid FolderId, string Label, int Depth);
@@ -22,6 +25,16 @@ public sealed class DialogRequest
     public IReadOnlyList<SaveTarget> Targets { get; init; } = [];
     public Guid? TargetId { get; set; }
     public string NewCollectionName { get; set; } = "";
+
+    // Folder settings
+    public FolderSettings? Settings { get; init; }
+    public bool IsCollection { get; init; }
+    public InheritedAuth? ParentAuth { get; init; }
+    public string Section { get; set; } = "headers";
+    public Dictionary<Type, AuthConfig> AuthCache { get; } = [];
+
+    /// <summary>Wide dialogs with multi-line fields, where Enter must not submit.</summary>
+    public bool IsWide => Kind == DialogKind.FolderSettings;
 
     internal TaskCompletionSource<object?> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 }
@@ -52,6 +65,21 @@ public sealed class DialogService
             TargetId = selected ?? targets.FirstOrDefault()?.FolderId,
             OkLabel = "Save",
         }) as SaveAsResult;
+
+    /// <summary>Edits a copy of a folder's or collection's settings; returns it on Save, null on Cancel.</summary>
+    public async Task<FolderSettings?> FolderSettingsAsync(RequestFolder folder, InheritedAuth? parentAuth)
+    {
+        var request = new DialogRequest
+        {
+            Kind = DialogKind.FolderSettings,
+            Title = $"{(folder is RequestCollection ? "Collection" : "Folder")} settings: {folder.Name}",
+            Settings = folder.GetSettings(),
+            IsCollection = folder is RequestCollection,
+            ParentAuth = parentAuth,
+            OkLabel = "Save",
+        };
+        return await Show(request) is true ? request.Settings : null;
+    }
 
     public void Complete(object? result)
     {

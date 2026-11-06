@@ -3,8 +3,8 @@
 
 @if (Dialogs.Current is { } d)
 {
-    <div class="modal-backdrop" @onclick="() => Dialogs.Complete(null)">
-        <div class="modal" role="dialog" aria-modal="true" aria-label="@d.Title" @onclick:stopPropagation="true" @onkeydown="e => OnKey(e, d)">
+    <div class="modal-backdrop" @onclick="() => { if (!d.IsWide) Dialogs.Complete(null); }">
+        <div class="modal @(d.IsWide ? "wide" : null)" role="dialog" aria-modal="true" aria-label="@d.Title" @onclick:stopPropagation="true" @onkeydown="e => OnKey(e, d)">
             <h3>@d.Title</h3>
 
             @switch (d.Kind)
@@ -43,6 +43,10 @@
                         </label>
                     }
                     break;
+
+                case DialogKind.FolderSettings:
+                    <FolderSettingsEditor D="d" />
+                    break;
             }
 
             <div class="modal-actions">
@@ -66,7 +70,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (Dialogs.Current is { Kind: not DialogKind.Confirm } d && !ReferenceEquals(d, _focused))
+        if (Dialogs.Current is { Kind: DialogKind.Prompt or DialogKind.SaveAs } d && !ReferenceEquals(d, _focused))
         {
             _focused = d;
             try { await _first.FocusAsync(); }
@@ -89,7 +93,7 @@
         if (!CanSubmit(d)) return;
         Dialogs.Complete(d.Kind switch
         {
-            DialogKind.Confirm => true,
+            DialogKind.Confirm or DialogKind.FolderSettings => true,
             DialogKind.SaveAs => new SaveAsResult(d.Value.Trim(), d.TargetId, d.TargetId is null ? d.NewCollectionName.Trim() : null),
             _ => d.Value,
         });
@@ -98,6 +102,6 @@
     private void OnKey(KeyboardEventArgs e, DialogRequest d)
     {
         if (e.Key == "Escape") Dialogs.Complete(null);
-        else if (e.Key == "Enter") Submit(d);
+        else if (e.Key == "Enter" && !d.IsWide) Submit(d);
     }
 }

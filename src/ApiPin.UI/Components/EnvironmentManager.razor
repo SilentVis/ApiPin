@@ -1,0 +1,120 @@
+@* Edits environments and globals on drafts; Save writes them all. *@
+@inject WorkspaceState State
+
+<div class="modal-backdrop">
+    <div class="modal wide env-manager" role="dialog" aria-modal="true" aria-label="Environments" @onkeydown="OnKey">
+        <h3>Environments and globals</h3>
+
+        <div class="env-layout">
+            <nav class="env-list">
+                @foreach (var env in _drafts.OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    var missing = env.MissingSecrets.Count();
+                    <button class="env-item @(ReferenceEquals(env, _selected) ? "active" : null)" @onclick="() => _selected = env">
+                        <span class="env-name">@(string.IsNullOrWhiteSpace(env.Name) ? "(unnamed)" : env.Name)</span>
+                        @if (missing > 0)
+                        {
+                            <span class="badge warn" title="Secret values not on this computer">@missing missing</span>
+                        }
+                        @if (env.Id == State.Workspace?.ActiveEnvironmentId)
+                        {
+                            <span class="muted">active</span>
+                        }
+                    </button>
+                }
+                <button class="link-btn" @onclick="Add">+ New environment</button>
+                <div class="env-sep"></div>
+                <button class="env-item @(_selected is null ? "active" : null)" @onclick="() => _selected = null">
+                    <span class="env-name">Globals</span>
+                </button>
+            </nav>
+
+            <div class="env-body">
+                @if (_selected is { } sel)
+                {
+                    <div class="env-head">
+                        <label class="field">
+                            <span>Name</span>
+                            <input value="@sel.Name" spellcheck="false" @oninput="e => sel.Name = e.Value?.ToString() ?? string.Empty" />
+                        </label>
+                        <span class="spacer"></span>
+                        <button class="btn ghost" @onclick="() => Duplicate(sel)">Duplicate</button>
+                        <button class="btn ghost danger-text" @onclick="() => Remove(sel)">Delete</button>
+                    </div>
+                    <VariableGrid Items="sel.Variables" MissingSecret="v => v.Secret && v.Value.Length == 0" @key="sel" />
+                    <p class="hint">
+                        Environment variables win over folder, collection and global ones. Files go in <code>environments/</code>;
+                        secret values are encrypted for your Windows account in app data and never written there.
+                    </p>
+                }
+                else
+                {
+                    <p class="hint">Globals apply to every request in the workspace and have the lowest precedence. They're saved in <code>apipin.workspace.json</code> (secret values excepted).</p>
+                    <VariableGrid Items="_globals" MissingSecret="v => v.Secret && v.Value.Length == 0" @key="_globals" />
+                }
+            </div>
+        </div>
+
+        <div class="modal-actions">
+            <button class="btn" @onclick="OnClose">Cancel</button>
+            <button class="btn primary" disabled="@_drafts.Any(e => string.IsNullOrWhiteSpace(e.Name))" @onclick="Save">Save</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>Environment to show first; null shows the active one.</summary>
+    [Parameter] public Guid? Select { get; set; }
+
+    private List<EnvironmentDefinition> _drafts = [];
+    private List<Variable> _globals = [];
+    private EnvironmentDefinition? _selected;
+
+    protected override void OnInitialized()
+    {
+        var ws = State.Workspace;
+        _drafts = ws?.Environments.Select(e => e.Clone()).ToList() ?? [];
+        _globals = ws?.Globals.Select(v => v.Clone()).ToList() ?? [];
+        var id = Select ?? ws?.ActiveEnvironmentId;
+        _selected = _drafts.FirstOrDefault(e => e.Id == id) ?? _drafts.OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+    }
+
+    private void Add()
+    {
+        var env = new EnvironmentDefinition { Name = UniqueName(_drafts.Count == 0 ? "Local" : "New environment") };
+        _drafts.Add(env);
+        _selected = env;
+    }
+
+    private void Duplicate(EnvironmentDefinition env)
+    {
+        var copy = env.Clone(newId: true);
+        copy.Name = UniqueName(env.Name + " copy");
+        _drafts.Add(copy);
+        _selected = copy;
+    }
+
+    private void Remove(EnvironmentDefinition env)
+    {
+        _drafts.Remove(env);
+        _selected = _drafts.OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+    }
+
+    private string UniqueName(string name)
+    {
+        var candidate = name;
+        for (var i = 2; _drafts.Any(e => e.Name.Equals(candidate, StringComparison.OrdinalIgnoreCase)); i++) candidate = $"{name} {i}";
+        return candidate;
+    }
+
+    private async Task Save()
+    {
+        if (_drafts.Any(e => string.IsNullOrWhiteSpace(e.Name))) return;
+        State.SaveEnvironments(_drafts, _globals);
+        await OnClose.InvokeAsync();
+    }
+
+    private Task OnKey(KeyboardEventArgs e) => e.Key == "Escape" ? OnClose.InvokeAsync() : Task.CompletedTask;
+}

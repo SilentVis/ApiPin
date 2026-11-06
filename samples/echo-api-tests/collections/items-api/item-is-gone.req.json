@@ -1,0 +1,28 @@
+{
+  "id": "a1d2c3b4-2222-4a2b-9c3d-000000000005",
+  "name": "Item is gone",
+  "method": "GET",
+  "url": "{{baseUrl}}/items/:id",
+  "queryParams": [],
+  "pathParams": [
+    { "enabled": true, "key": "id", "value": "{{itemId}}" }
+  ],
+  "headers": [],
+  "auth": {
+    "type": "inherit"
+  },
+  "body": {
+    "type": "none"
+  },
+  "settings": {
+    "timeoutMs": 30000,
+    "followRedirects": true,
+    "maxRedirects": 10,
+    "verifyTls": true,
+    "useCookieJar": true
+  },
+  "seq": 4,
+  "assertions": [
+    { "enabled": true, "kind": "status", "target": "", "operator": "equals", "expected": "404" }
+  ]
+}

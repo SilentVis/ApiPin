@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>apipin</AssemblyName>
+    <RootNamespace>ApiPin.Cli</RootNamespace>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>apipin</ToolCommandName>
+    <PackageId>ApiPin.Cli</PackageId>
+    <Description>Runs ApiPin collections from the command line or CI: captures, assertions, JUnit/JSON reports.</Description>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ApiPin.IntegrationTests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ApiPin.Core\ApiPin.Core.csproj" />
+    <ProjectReference Include="..\ApiPin.Storage\ApiPin.Storage.csproj" />
+  </ItemGroup>
+
+</Project>
