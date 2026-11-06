@@ -260,4 +260,20 @@ public sealed class EchoServerTests(EchoServerFixture server) : IClassFixture<Ec
         Assert.Equal("api.example.test", echo.GetProperty("headers").GetProperty("Host")[0].GetString());
         Assert.Equal("1", echo.GetProperty("cookies").GetProperty("a").GetString());
     }
+
+    [Fact]
+    public async Task Cookie_jar_stores_and_sends_cookies()
+    {
+        var jar = new System.Net.CookieContainer();
+        var executor = new HttpExecutor(_pool);
+
+        await executor.SendAsync(new RequestDefinition { Url = $"{server.BaseUrl}/cookies/set?session=abc" }, jar, Ct);
+        var echoed = await executor.SendAsync(new RequestDefinition { Url = $"{server.BaseUrl}/cookies" }, jar, Ct);
+        var optedOut = await executor.SendAsync(new RequestDefinition { Url = $"{server.BaseUrl}/cookies", Settings = new RequestSettings { UseCookieJar = false } }, jar, Ct);
+
+        Assert.Equal("abc", EchoServerFixture.Json(echoed.Body).GetProperty("cookies").GetProperty("session").GetString());
+        Assert.Contains(echoed.Request!.Headers, h => h.Key == "Cookie" && h.Value == "session=abc");
+        Assert.False(EchoServerFixture.Json(optedOut.Body).GetProperty("cookies").TryGetProperty("session", out _));
+        Assert.Single(jar.GetAllCookies());
+    }
 }

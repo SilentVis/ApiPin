@@ -1,0 +1,54 @@
+@* Keyboard shortcut map. *@
+@inject Overlays Overlays
+@inject IPlatformServices Platform
+
+<div class="modal-backdrop" @onclick="Overlays.Close">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" @onclick:stopPropagation="true" @onkeydown="OnKey">
+        <h3>Keyboard shortcuts</h3>
+        <table class="table shortcuts-table">
+            <tbody>
+                @foreach (var (keys, what) in Rows)
+                {
+                    <tr><td>@foreach (var k in keys.Split(" / ")) { <kbd>@k</kbd> }</td><td>@what</td></tr>
+                }
+            </tbody>
+        </table>
+        @if (Platform.RunsInBrowser)
+        {
+            <p class="hint">In a browser, Ctrl+T, Ctrl+W and Ctrl+Shift+T belong to the browser, so ApiPin uses the Alt versions.</p>
+        }
+        <div class="modal-actions"><button class="btn" @onclick="Overlays.Close">Close</button></div>
+    </div>
+</div>
+
+@code {
+    private void OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Overlays.Close();
+    }
+
+    private IEnumerable<(string Keys, string What)> Rows
+    {
+        get
+        {
+            var mod = Platform.RunsInBrowser ? "Alt" : "Ctrl";
+            return
+            [
+                ("Ctrl+K", "Command palette: commands, saved requests, environments"),
+                ("Ctrl+Enter", "Send the request"),
+                ("Ctrl+S", "Save"),
+                ("Ctrl+Shift+S", "Save as…"),
+                ($"{mod}+T", "New tab"),
+                ($"{mod}+W", "Close tab"),
+                ($"{mod}+Shift+T", "Reopen closed tab"),
+                ("Ctrl+Tab / Ctrl+PageDown", "Next tab"),
+                ("Ctrl+Shift+Tab / Ctrl+PageUp", "Previous tab"),
+                ("Ctrl+E", "Switch environment"),
+                ("Ctrl+Shift+C", "Code snippet (cURL, C#, …)"),
+                ("Ctrl+/", "This list"),
+                ("{{", "Variable suggestions in the URL, headers and body"),
+                ("Esc", "Close dialogs and menus"),
+            ];
+        }
+    }
+}

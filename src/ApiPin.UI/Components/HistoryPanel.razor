@@ -1,0 +1,91 @@
+@* Sent requests, newest first, grouped by day; click to reopen in a new tab. *@
+@using ApiPin.Storage
+@inject WorkspaceState State
+@implements IDisposable
+
+<input class="sidebar-filter" type="search" placeholder="Search history (URL, name, status)" value="@_filter" @oninput="e => _filter = e.Value?.ToString() ?? string.Empty" />
+
+<div class="tree history" role="list">
+    @{
+        var entries = State.History.Entries.Where(Matches).Take(300).ToList();
+    }
+    @if (entries.Count == 0)
+    {
+        <p class="hint tree-empty">@(_filter.Length > 0 ? "Nothing matches." : "Requests you send show up here.")</p>
+    }
+    @foreach (var day in entries.GroupBy(e => e.At.LocalDateTime.Date))
+    {
+        <div class="history-day">@DayLabel(day.Key)</div>
+        @foreach (var entry in day)
+        {
+            <div class="tree-row history-row" role="listitem" title="@entry.Url" @onclick="() => State.Restore(entry)">
+                <span class="method-badge @Display.MethodClass(entry.Method)">@Display.ShortMethod(entry.Method)</span>
+                <span class="node-name">
+                    <span class="history-name">@Label(entry)</span>
+                </span>
+                @if (entry.Error is not null)
+                {
+                    <span class="history-status s-text-error" title="@entry.Error">ERR</span>
+                }
+                else
+                {
+                    <span class="history-status @Display.StatusClass(entry.Status)">@entry.Status</span>
+                }
+                <span class="muted history-time">@entry.At.LocalDateTime.ToString("HH:mm")</span>
+                <button class="icon-btn row-action" title="Remove from history" @onclick="() => State.History.Delete(entry.Id)" @onclick:stopPropagation="true">✕</button>
+            </div>
+        }
+    }
+</div>
+
+<div class="sidebar-foot history-foot">
+    <span class="muted">@State.History.Entries.Count requests</span>
+    <span class="spacer"></span>
+    @if (_confirmClear)
+    {
+        <button class="link-btn danger-text" @onclick="Clear">Clear all?</button>
+        <button class="link-btn" @onclick="() => _confirmClear = false">Keep</button>
+    }
+    else
+    {
+        <button class="link-btn" disabled="@(State.History.Entries.Count == 0)" @onclick="() => _confirmClear = true">Clear history</button>
+    }
+</div>
+
+@code {
+    private string _filter = "";
+    private bool _confirmClear;
+
+    protected override void OnInitialized() => State.History.Changed += OnChanged;
+
+    public void Dispose() => State.History.Changed -= OnChanged;
+
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private void Clear()
+    {
+        State.History.Clear();
+        _confirmClear = false;
+    }
+
+    private bool Matches(HistoryEntry e)
+    {
+        var f = _filter.Trim();
+        return f.Length == 0 ||
+               e.Url.Contains(f, StringComparison.OrdinalIgnoreCase) ||
+               e.Request.Name.Contains(f, StringComparison.OrdinalIgnoreCase) ||
+               e.Method.Equals(f, StringComparison.OrdinalIgnoreCase) ||
+               e.Status?.ToString() == f;
+    }
+
+    private static string Label(HistoryEntry e)
+    {
+        var url = e.Url;
+        var scheme = url.IndexOf("://", StringComparison.Ordinal);
+        if (scheme >= 0) url = url[(scheme + 3)..];
+        return e.Request.Name.Length > 0 ? $"{e.Request.Name} · {url}" : url;
+    }
+
+    private static string DayLabel(DateTime day) =>
+        day == DateTime.Today ? "Today" : day == DateTime.Today.AddDays(-1) ? "Yesterday" : day.ToString("ddd d MMM yyyy");
+}

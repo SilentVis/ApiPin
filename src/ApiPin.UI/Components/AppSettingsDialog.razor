@@ -3,6 +3,7 @@
 @using ApiPin.Storage
 @inject AppSettingsStore Settings
 @inject TokenService Tokens
+@inject WorkspaceState State
 
 <div class="modal-backdrop">
     <div class="modal wide app-settings" role="dialog" aria-modal="true" aria-label="Settings" @onkeydown="OnKey">
@@ -45,6 +46,33 @@
             }
         </div>
 
+        <h4 class="section-title">History</h4>
+        <div class="form">
+            <label class="check">
+                <input type="checkbox" checked="@_history.Enabled" @onchange="e => _history = _history with { Enabled = e.Value is true }" />
+                Keep a history of sent requests
+            </label>
+            @if (_history.Enabled)
+            {
+                <label class="field">
+                    <span>Keep</span>
+                    <span class="inline">
+                        <input type="number" class="narrow" min="10" max="10000" value="@_history.MaxEntries" @onchange="e => _history = _history with { MaxEntries = Int(e, _history.MaxEntries, 10, 10000) }" />
+                        <span class="muted">requests, for at most</span>
+                        <input type="number" class="narrow" min="1" max="365" value="@_history.MaxDays" @onchange="e => _history = _history with { MaxDays = Int(e, _history.MaxDays, 1, 365) }" />
+                        <span class="muted">days</span>
+                    </span>
+                </label>
+                <label class="check">
+                    <input type="checkbox" checked="@_history.SaveBodies" @onchange="e => _history = _history with { SaveBodies = e.Value is true }" />
+                    Keep response bodies (up to
+                    <input type="number" class="narrow" min="1" max="10240" value="@_history.MaxBodyKb" @onchange="e => _history = _history with { MaxBodyKb = Int(e, _history.MaxBodyKb, 1, 10240) }" />
+                    KB each)
+                </label>
+                <p class="hint">History is stored in app data on this computer (history.jsonl), never in the workspace.</p>
+            }
+        </div>
+
         <h4 class="section-title">Tokens</h4>
         <div class="inline">
             <button class="btn" @onclick="ClearTokens">Clear all cached tokens</button>
@@ -65,9 +93,18 @@
     [Parameter] public EventCallback OnClose { get; set; }
 
     private ProxySettings _proxy = new();
+    private HistorySettings _history = new();
+
+    private static int Int(ChangeEventArgs e, int fallback, int min, int max) =>
+        int.TryParse(e.Value?.ToString(), out var v) ? Math.Clamp(v, min, max) : fallback;
     private bool _cleared;
 
-    protected override void OnInitialized() => _proxy = Settings.Load().Proxy;
+    protected override void OnInitialized()
+    {
+        var settings = Settings.Load();
+        _proxy = settings.Proxy;
+        _history = settings.History;
+    }
 
     private static string Str(ChangeEventArgs e) => e.Value?.ToString() ?? "";
 
@@ -79,7 +116,8 @@
 
     private async Task Save()
     {
-        Settings.Save(Settings.Load() with { Proxy = _proxy });
+        Settings.Save(Settings.Load() with { Proxy = _proxy, History = _history });
+        State.History.Apply(_history);
         await OnClose.InvokeAsync();
     }
 

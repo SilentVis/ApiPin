@@ -3,25 +3,49 @@
 @inject UiActions Actions
 @implements IDisposable
 
-<div class="tabstrip" role="tablist">
+<div class="tabstrip @(_drag is not null ? "dragging" : null)" role="tablist">
     @foreach (var tab in State.Tabs)
     {
-        <div class="tab @(ReferenceEquals(tab, State.Active) ? "active" : null)" role="tab" title="@tab.Title" @key="tab"
-             @onclick="() => State.Activate(tab)" @onauxclick="e => OnAuxClick(e, tab)">
+        <div class="tab @(ReferenceEquals(tab, State.Active) ? "active" : null) @(ReferenceEquals(_drag, tab) ? "drag-source" : null) @DropClass(tab)"
+             role="tab" title="@tab.Title" @key="tab" draggable="true"
+             @onclick="() => State.Activate(tab)" @onauxclick="e => OnAuxClick(e, tab)"
+             @oncontextmenu="e => OpenMenu(e, tab)" @oncontextmenu:preventDefault="true"
+             @ondragstart="() => _drag = tab" @ondragend="() => { _drag = null; _drop = null; }"
+             @ondragover="e => DragOver(e, tab)" @ondragover:preventDefault="true" @ondrop="() => Drop(tab)" @ondrop:preventDefault="true">
             <span class="method-badge @Display.MethodClass(tab.Request.Method)">@Display.ShortMethod(tab.Request.Method)</span>
             <span class="tab-title">@tab.Title</span>
             @if (tab.IsSending)
             {
                 <span class="tab-spinner"></span>
             }
-            <button class="tab-close @(tab.IsModified ? "modified" : null)" title="@(tab.IsModified ? "Unsaved changes. " : "")Close (@(Platform.RunsInBrowser ? "Alt" : "Ctrl")+W)"
+            <button class="tab-close @(tab.IsModified ? "modified" : null)" title="@(tab.IsModified ? "Unsaved changes. " : "")Close (@(Mod)+W)"
                     @onclick="() => Actions.CloseAsync(tab)" @onclick:stopPropagation="true"><span class="x">✕</span><span class="dot-mark"></span></button>
         </div>
     }
-    <button class="tab-new" title="New request (@(Platform.RunsInBrowser ? "Alt" : "Ctrl")+T)" @onclick="() => State.NewTab()">+</button>
+    <button class="tab-new" title="New request (@(Mod)+T)" @onclick="() => State.NewTab()">+</button>
 </div>
 
+@if (_menuFor is { } menuTab)
+{
+    <div class="menu-backdrop" @onclick="() => _menuFor = null" @oncontextmenu="() => _menuFor = null" @oncontextmenu:preventDefault="true"></div>
+    <div class="menu tab-menu" role="menu" style="left:@(_menuX)px; top:@(_menuY)px">
+        <button class="menu-item" role="menuitem" @onclick="() => Run(() => Actions.CloseAsync(menuTab))">Close</button>
+        <button class="menu-item" role="menuitem" disabled="@(State.Tabs.Count < 2)" @onclick="() => Run(() => Actions.CloseManyAsync(State.OthersThan(menuTab)))">Close others</button>
+        <button class="menu-item" role="menuitem" disabled="@(State.RightOf(menuTab).Count == 0)" @onclick="() => Run(() => Actions.CloseManyAsync(State.RightOf(menuTab)))">Close tabs to the right</button>
+        <button class="menu-item" role="menuitem" @onclick="() => Run(() => Actions.CloseManyAsync(State.Tabs.ToList()))">Close all</button>
+        <button class="menu-item" role="menuitem" @onclick="() => Run(() => { State.Duplicate(menuTab); return Task.CompletedTask; })">Duplicate</button>
+        <button class="menu-item" role="menuitem" disabled="@(!State.CanReopen)" @onclick="() => Run(() => { State.ReopenClosed(); return Task.CompletedTask; })">Reopen closed tab (@(Mod)+Shift+T)</button>
+    </div>
+}
+
 @code {
+    private RequestTab? _drag;
+    private (RequestTab Tab, bool After)? _drop;
+    private RequestTab? _menuFor;
+    private double _menuX, _menuY;
+
+    private string Mod => Platform.RunsInBrowser ? "Alt" : "Ctrl";
+
     // Has no parameters, so a parent re-render doesn't refresh it; follow state changes directly.
     protected override void OnInitialized() => State.Changed += OnStateChanged;
 
@@ -33,4 +57,37 @@
     {
         if (e.Button == 1) await Actions.CloseAsync(tab); // middle click
     }
+
+    private void OpenMenu(MouseEventArgs e, RequestTab tab)
+    {
+        _menuFor = tab;
+        (_menuX, _menuY) = (e.ClientX, e.ClientY);
+    }
+
+    private async Task Run(Func<Task> action)
+    {
+        _menuFor = null;
+        await action();
+    }
+
+    private void DragOver(DragEventArgs e, RequestTab target)
+    {
+        if (_drag is null || ReferenceEquals(_drag, target)) { _drop = null; return; }
+        // Tabs are ~120-240 px wide; the left half drops before, the right half after.
+        _drop = (target, e.OffsetX > 60);
+    }
+
+    private void Drop(RequestTab target)
+    {
+        if (_drag is { } tab && _drop is { } d && ReferenceEquals(d.Tab, target))
+        {
+            var others = State.Tabs.Where(t => !ReferenceEquals(t, tab)).ToList();
+            State.MoveTab(tab, others.IndexOf(target) + (d.After ? 1 : 0));
+        }
+        _drag = null;
+        _drop = null;
+    }
+
+    private string? DropClass(RequestTab tab) =>
+        _drop is { } d && ReferenceEquals(d.Tab, tab) ? d.After ? "drop-after" : "drop-before" : null;
 }

@@ -17,14 +17,18 @@ export function registerShortcuts(dotnet) {
         let action = null;
 
         // Alt alternatives for browsers, which keep Ctrl+T / Ctrl+W / Ctrl+Tab for themselves.
-        if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
-            if (e.code === 'KeyT') action = 'newTab';
-            else if (e.code === 'KeyW') action = 'closeTab';
+        if (e.altKey && !e.ctrlKey && !e.metaKey) {
+            if (e.code === 'KeyT') action = e.shiftKey ? 'reopenTab' : 'newTab';
+            else if (e.code === 'KeyW' && !e.shiftKey) action = 'closeTab';
         }
         else if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
         else if (key === 'enter') action = 'send';
         else if (key === 's') action = e.shiftKey ? 'saveAs' : 'save';
-        else if (key === 't' && !e.shiftKey) action = 'newTab';
+        else if (key === 't') action = e.shiftKey ? 'reopenTab' : 'newTab';
+        else if (key === 'k' && !e.shiftKey) action = 'palette';
+        else if (key === 'e' && !e.shiftKey) action = 'environment';
+        else if (key === 'c' && e.shiftKey) action = 'snippet';
+        else if (key === '/' || e.code === 'Slash') action = 'shortcuts';
         else if (key === 'w') action = 'closeTab';
         else if (key === 'tab') action = e.shiftKey ? 'prevTab' : 'nextTab';
         else if (key === 'pagedown') action = 'nextTab';

@@ -33,8 +33,10 @@ public sealed class WorkspaceState : IDisposable
     private WorkspaceWatcher? _watcher;
     private volatile bool _externalChangePending;
 
-    public WorkspaceState(ScratchTabStore scratch, AppSettingsStore settings, IHttpExecutor executor, ISecretStore secrets, WorkspaceStartup startup, ILogger<WorkspaceState> log)
+    public WorkspaceState(ScratchTabStore scratch, AppSettingsStore settings, IHttpExecutor executor, ISecretStore secrets, HistoryStore history,
+        WorkspaceStartup startup, ILogger<WorkspaceState> log)
     {
+        History = history;
         _log = log;
         _secrets = secrets;
         _scratch = scratch;
@@ -99,8 +101,70 @@ public sealed class WorkspaceState : IDisposable
 
         Cancel(tab);
         Tabs.RemoveAt(index);
+        if (!IsBlank(tab))
+        {
+            _closed.Push(tab.Request.Clone(newId: false));
+            if (_closed.Count > MaxClosed) _closed = new Stack<RequestDefinition>(_closed.Take(MaxClosed).Reverse());
+        }
         if (Tabs.Count == 0) Tabs.Add(new RequestTab(new RequestDefinition()));
         if (ReferenceEquals(Active, tab)) Active = Tabs[Math.Min(index, Tabs.Count - 1)];
+        MarkDirty();
+    }
+
+    private const int MaxClosed = 20;
+    private Stack<RequestDefinition> _closed = new();
+
+    public bool CanReopen => _closed.Count > 0;
+
+    /// <summary>Ctrl+Shift+T: brings back the most recently closed tab (linked to its saved request again if there is one).</summary>
+    public void ReopenClosed()
+    {
+        if (!_closed.TryPop(out var request)) return;
+        if (Tabs.FirstOrDefault(t => t.Request.Id == request.Id) is { } open)
+        {
+            Activate(open);
+            return;
+        }
+        var tab = new RequestTab(request);
+        Tabs.Insert(Tabs.IndexOf(Active) + 1, tab);
+        Active = tab;
+        Relink(tab);
+        MarkDirty();
+    }
+
+    /// <summary>The tabs other than <paramref name="keep"/>, for "Close others".</summary>
+    public IReadOnlyList<RequestTab> OthersThan(RequestTab keep) => Tabs.Where(t => !ReferenceEquals(t, keep)).ToList();
+
+    /// <summary>The tabs after <paramref name="tab"/>, for "Close tabs to the right".</summary>
+    public IReadOnlyList<RequestTab> RightOf(RequestTab tab) => Tabs.Skip(Tabs.IndexOf(tab) + 1).ToList();
+
+    /// <summary>Drag and drop in the tab strip.</summary>
+    public void MoveTab(RequestTab tab, int index)
+    {
+        if (!Tabs.Remove(tab)) return;
+        Tabs.Insert(Math.Clamp(index, 0, Tabs.Count), tab);
+        MarkDirty();
+    }
+
+    /// <summary>Opens a request in a new tab, e.g. from history or an import.</summary>
+    public RequestTab OpenNew(RequestDefinition request, ResponseResult? response = null)
+    {
+        var tab = new RequestTab(request) { Response = response };
+        var blank = IsBlank(Active) ? Active : null;
+        Tabs.Insert(Tabs.IndexOf(Active) + 1, tab);
+        if (blank is not null) Tabs.Remove(blank);
+        Active = tab;
+        MarkDirty();
+        return tab;
+    }
+
+    /// <summary>A pasted curl command replaces the tab's request (keeping its id, name and saved location).</summary>
+    public void ApplyCurl(RequestTab tab, RequestDefinition parsed)
+    {
+        parsed.Id = tab.Request.Id;
+        if (tab.Request.Name.Length > 0) parsed.Name = tab.Request.Name;
+        parsed.Seq = tab.Request.Seq;
+        tab.Request = parsed;
         MarkDirty();
     }
 
@@ -148,7 +212,9 @@ public sealed class WorkspaceState : IDisposable
             // Send a snapshot, so edits made while waiting don't change the request in flight.
             var prepared = Prepare(tab);
             tab.LastReport = prepared.Report;
-            tab.Response = await _executor.SendAsync(prepared.Request, cts.Token);
+            var snapshot = tab.Request.Clone(newId: false);
+            tab.Response = await _executor.SendAsync(prepared.Request, CookieJar, cts.Token);
+            RecordHistory(snapshot, tab.Response);
         }
         finally
         {
@@ -159,6 +225,95 @@ public sealed class WorkspaceState : IDisposable
     }
 
     public void Cancel(RequestTab tab) => tab.Sending?.Cancel();
+
+    // ---------- History and cookies ----------
+
+    public HistoryStore History { get; }
+
+    private void RecordHistory(RequestDefinition request, ResponseResult response)
+    {
+        if (response.Error?.Kind == ErrorKind.Cancelled) return;
+        try
+        {
+            var settings = _settings.Load().History;
+            var saved = Find(request.Id) is not null ? request.Id : (Guid?)null;
+            History.Add(HistoryEntry.From(request, response, settings, Workspace?.Root, saved, ActiveEnvironment?.Name), settings);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            _log.LogWarning(ex, "Could not record history");
+        }
+    }
+
+    /// <summary>Opens a history entry in a new tab, with its response when the body was kept.</summary>
+    public void Restore(HistoryEntry entry)
+    {
+        var request = entry.Request.Clone(newId: true);
+        // Back to the saved request when it still exists and isn't open; otherwise an unsaved copy.
+        if (entry.SavedRequestId is { } id && Find(id) is not null && Tabs.All(t => t.Request.Id != id)) request.Id = id;
+        var tab = OpenNew(request, entry.ToResponse());
+        Relink(tab);
+    }
+
+    private readonly Dictionary<Guid, System.Net.CookieContainer> _jars = [];
+
+    /// <summary>The cookie jar of the active environment (one for "No environment" too). Kept until the app closes.</summary>
+    public System.Net.CookieContainer CookieJar
+    {
+        get
+        {
+            var key = ActiveEnvironment?.Id ?? Guid.Empty;
+            if (!_jars.TryGetValue(key, out var jar)) _jars[key] = jar = new System.Net.CookieContainer();
+            return jar;
+        }
+    }
+
+    public void ClearCookieJar()
+    {
+        _jars.Remove(ActiveEnvironment?.Id ?? Guid.Empty);
+        Changed?.Invoke();
+    }
+
+    // ---------- Import ----------
+
+    /// <summary>Saves an imported collection into the workspace.</summary>
+    public RequestCollection? ImportCollection(RequestCollection imported)
+    {
+        if (Workspace is null) return null;
+        var ws = Workspace;
+        imported.Seq = ws.Collections.Select(c => c.Seq).DefaultIfEmpty(-1).Max() + 1;
+        var ok = Run(() =>
+        {
+            _store!.SaveCollection(imported);
+            SaveTree(imported);
+            ws.Collections.Add(imported);
+        });
+        if (!ok) Reload();
+        return ok ? imported : null;
+
+        void SaveTree(RequestFolder folder)
+        {
+            foreach (var request in folder.Requests) _store!.SaveRequest(folder, request);
+            foreach (var sub in folder.Folders)
+            {
+                _store!.SaveFolder(folder, sub);
+                SaveTree(sub);
+            }
+        }
+    }
+
+    public EnvironmentDefinition? ImportEnvironment(EnvironmentDefinition environment)
+    {
+        if (Workspace is null) return null;
+        var ws = Workspace;
+        var name = environment.Name;
+        for (var i = 2; ws.Environments.Any(e => e.Name.Equals(environment.Name, StringComparison.OrdinalIgnoreCase)); i++) environment.Name = $"{name} {i}";
+        return Run(() =>
+        {
+            _store!.SaveEnvironment(environment);
+            ws.Environments.Add(environment);
+        }) ? environment : null;
+    }
 
     /// <summary>Runtime, environment and global variables. Collection and folder variables are added per request.</summary>
     private VariableContext BaseVariables()

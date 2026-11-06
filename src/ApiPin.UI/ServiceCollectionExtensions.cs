@@ -27,12 +27,14 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISecretStore>(OperatingSystem.IsWindows()
             ? new DpapiSecretStore(DpapiSecretStore.DefaultPath)
             : new InMemorySecretStore()); // no DPAPI: secrets last until the app closes
+        services.AddSingleton(new HistoryStore(HistoryStore.DefaultPath));
         services.AddSingleton<WorkspaceState>();
         services.TryAddSingleton<IPlatformServices, BrowserPlatformServices>();
 
         // Per UI session (one per browser connection in the web host).
         services.AddScoped<DialogService>();
         services.AddScoped<UiActions>();
+        services.AddScoped<Overlays>();
         return services;
     }
 }

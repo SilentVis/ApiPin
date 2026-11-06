@@ -1,6 +1,7 @@
 @* Workspace header, filter and the collections tree, with drag-and-drop to reorder and move. *@
 @inject WorkspaceState State
 @inject UiActions Actions
+@inject Overlays Overlays
 @implements IDisposable
 
 <aside class="sidebar">
@@ -14,6 +15,7 @@
             <div class="menu" role="menu">
                 <button class="menu-item" role="menuitem" @onclick="() => Run(Actions.OpenWorkspaceAsync)">Open or create workspace folder…</button>
                 <button class="menu-item" role="menuitem" @onclick="() => Run(() => { State.Reload(); return Task.CompletedTask; })">Reload from disk</button>
+                <button class="menu-item" role="menuitem" @onclick="() => Run(() => { Overlays.Show(Overlay.Import); return Task.CompletedTask; })">Import: Postman, OpenAPI, cURL…</button>
                 @if (State.RecentWorkspaces is { Count: > 0 } recent)
                 {
                     <div class="menu-sep">Recent</div>
@@ -40,7 +42,16 @@
         </div>
     }
 
-    @if (State.Workspace is { } workspace)
+    <div class="segmented sidebar-views">
+        <button class="@(_view == "collections" ? "active" : null)" @onclick='() => _view = "collections"'>Collections</button>
+        <button class="@(_view == "history" ? "active" : null)" @onclick='() => _view = "history"'>History</button>
+    </div>
+
+    @if (_view == "history")
+    {
+        <HistoryPanel />
+    }
+    else if (State.Workspace is { } workspace)
     {
         <input class="sidebar-filter" type="search" placeholder="Filter requests" value="@_filter" @oninput="e => _filter = e.Value?.ToString() ?? string.Empty" />
 
@@ -87,6 +98,14 @@
 
     private readonly HashSet<Guid> _expanded = [];
     private Guid? _menu;
+    private string _view = "collections";
+
+    /// <summary>Switches between the collections tree and history (command palette).</summary>
+    public void ShowView(string view)
+    {
+        _view = view;
+        StateHasChanged();
+    }
     private string _filter = "";
 
     // Drag and drop: the item being dragged and where it would land.

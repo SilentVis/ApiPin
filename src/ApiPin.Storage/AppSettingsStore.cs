@@ -11,6 +11,8 @@ public sealed record AppSettings
     /// <summary>Proxy for every outgoing request.</summary>
     public ProxySettings Proxy { get; init; } = new();
 
+    public HistorySettings History { get; init; } = new();
+
     /// <summary>Recently opened workspace folders, most recent first.</summary>
     public IReadOnlyList<string> RecentWorkspaces { get; init; } = [];
 

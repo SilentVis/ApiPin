@@ -38,6 +38,16 @@ public sealed class UiActions(WorkspaceState state, DialogService dialogs, IPlat
         state.Close(tab);
     }
 
+    /// <summary>Closes several tabs, asking once when any of them has unsaved changes.</summary>
+    public async Task CloseManyAsync(IReadOnlyList<RequestTab> tabs)
+    {
+        var modified = tabs.Count(t => t.IsModified);
+        if (modified > 0 && !await dialogs.ConfirmAsync("Close tabs",
+                $"{modified} of these tabs {(modified == 1 ? "has" : "have")} unsaved changes. Close them and lose the changes?", "Close without saving", danger: true))
+            return;
+        foreach (var tab in tabs) state.Close(tab);
+    }
+
     public async Task NewCollectionAsync()
     {
         if (await dialogs.PromptAsync("New collection", "Name", "", "Create") is { } name) state.CreateCollection(name);

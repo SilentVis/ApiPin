@@ -1,0 +1,88 @@
+@* The active environment's cookie jar: cookies sent with requests and set by responses. *@
+@using System.Net
+@inject WorkspaceState State
+@inject Overlays Overlays
+
+<div class="modal-backdrop">
+    <div class="modal wide cookie-dialog" role="dialog" aria-modal="true" aria-label="Cookie jar" @onkeydown="OnKey">
+        <h3>Cookies · @(State.ActiveEnvironment?.Name ?? "No environment")</h3>
+        <p class="muted">Stored from responses and sent with matching requests (turn it off per request in Settings). Each environment has its own jar; jars are cleared when ApiPin closes.</p>
+
+        @{
+            var cookies = State.CookieJar.GetAllCookies().Where(c => !c.Expired).OrderBy(c => c.Domain).ThenBy(c => c.Name).ToList();
+        }
+        @if (cookies.Count == 0)
+        {
+            <p class="hint">The jar is empty.</p>
+        }
+        else
+        {
+            <div class="cookie-table">
+                <table class="table">
+                    <thead><tr><th>Domain</th><th>Path</th><th>Name</th><th>Value</th><th>Expires</th><th>Flags</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var c in cookies)
+                        {
+                            <tr>
+                                <td class="mono">@c.Domain</td>
+                                <td class="mono">@c.Path</td>
+                                <td class="mono">@c.Name</td>
+                                <td class="mono wrap">@c.Value</td>
+                                <td>@(c.Expires == DateTime.MinValue ? "session" : c.Expires.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))</td>
+                                <td class="muted">@string.Join(" ", new[] { c.Secure ? "Secure" : null, c.HttpOnly ? "HttpOnly" : null }.Where(f => f is not null))</td>
+                                <td><button class="icon-btn" title="Delete" @onclick="() => Delete(c)">✕</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <h4 class="section-title">Add a cookie</h4>
+        <div class="cookie-add">
+            <input placeholder="domain, e.g. localhost" value="@_domain" spellcheck="false" @oninput="e => _domain = Str(e)" />
+            <input placeholder="path" value="@_path" spellcheck="false" @oninput="e => _path = Str(e)" />
+            <input placeholder="name" value="@_name" spellcheck="false" @oninput="e => _name = Str(e)" />
+            <input placeholder="value" value="@_value" spellcheck="false" @oninput="e => _value = Str(e)" />
+            <button class="btn" disabled="@(_domain.Trim().Length == 0 || _name.Trim().Length == 0)" @onclick="Add">Add</button>
+        </div>
+        @if (_error is not null)
+        {
+            <div class="banner error">@_error</div>
+        }
+
+        <div class="modal-actions">
+            <button class="btn ghost danger-text" disabled="@(cookies.Count == 0)" @onclick="State.ClearCookieJar">Clear jar</button>
+            <span class="spacer"></span>
+            <button class="btn" @onclick="Overlays.Close">Close</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _domain = "localhost", _path = "/", _name = "", _value = "";
+    private string? _error;
+
+    private static string Str(ChangeEventArgs e) => e.Value?.ToString() ?? "";
+
+    private void Delete(Cookie cookie) => cookie.Expired = true;
+
+    private void Add()
+    {
+        try
+        {
+            State.CookieJar.Add(new Cookie(_name.Trim(), _value, _path.Trim().Length == 0 ? "/" : _path.Trim(), _domain.Trim()));
+            _name = _value = "";
+            _error = null;
+        }
+        catch (CookieException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private void OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Overlays.Close();
+    }
+}

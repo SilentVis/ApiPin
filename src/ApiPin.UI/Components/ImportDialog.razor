@@ -1,0 +1,122 @@
+@* Import a Postman collection or environment, an OpenAPI description, or a curl command, pasted or from a file. *@
+@using Microsoft.AspNetCore.Components.Forms
+@using ApiPin.Core.Conversion
+@using ApiPin.Storage.OpenApi
+@using ApiPin.Storage.Postman
+@inject WorkspaceState State
+@inject Overlays Overlays
+
+<div class="modal-backdrop">
+    <div class="modal wide import-dialog" role="dialog" aria-modal="true" aria-label="Import" @onkeydown="OnKey">
+        <h3>Import</h3>
+        <p class="muted">Paste a <b>curl</b> command, a <b>Postman</b> collection (v2.0/v2.1) or environment, or an <b>OpenAPI</b> 3 / Swagger 2.0 description (JSON or YAML), or pick a file.</p>
+
+        <div class="inline">
+            <InputFile OnChange="OnFile" accept=".json,.yaml,.yml,.txt,.sh" />
+            @if (_fileName is not null)
+            {
+                <span class="muted">@_fileName</span>
+            }
+        </div>
+        <textarea class="code-input import-text" spellcheck="false" placeholder="curl https://… or { &quot;info&quot;: … } or openapi: 3.0.0 …" value="@_text"
+                  @oninput="e => { _text = e.Value?.ToString() ?? string.Empty; _result = null; _error = null; }"></textarea>
+
+        @if (_text.Length > 0 && _result is null && _error is null)
+        {
+            <p class="hint">Detected: <b>@Detect()</b></p>
+        }
+        @if (_error is not null)
+        {
+            <div class="banner error">@_error</div>
+        }
+        @if (_result is not null)
+        {
+            <div class="banner ok-banner">@_result</div>
+            @foreach (var w in _warnings)
+            {
+                <div class="banner warn">@w</div>
+            }
+        }
+
+        <div class="modal-actions">
+            <button class="btn" @onclick="Overlays.Close">@(_result is null ? "Cancel" : "Close")</button>
+            <button class="btn primary" disabled="@(_text.Trim().Length == 0 || _result is not null)" @onclick="Import">Import</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _text = "";
+    private string? _fileName;
+    private string? _error;
+    private string? _result;
+    private IReadOnlyList<string> _warnings = [];
+
+    protected override void OnInitialized() => _text = Overlays.Argument ?? "";
+
+    private async Task OnFile(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        _result = null;
+        try
+        {
+            using var reader = new StreamReader(e.File.OpenReadStream(maxAllowedSize: 20 * 1024 * 1024));
+            _text = await reader.ReadToEndAsync();
+            _fileName = e.File.Name;
+        }
+        catch (IOException ex)
+        {
+            _error = $"Couldn't read {e.File.Name}: {ex.Message}";
+        }
+    }
+
+    private string Detect()
+    {
+        if (CurlParser.LooksLikeCurl(_text)) return "curl command → a new tab";
+        if (OpenApiImporter.LooksLikeOpenApi(_text)) return "OpenAPI → a new collection";
+        if (_text.Contains("getpostman.com", StringComparison.OrdinalIgnoreCase)) return "Postman collection → a new collection";
+        if (_text.Contains("\"values\"", StringComparison.Ordinal)) return "Postman environment → a new environment";
+        return "unknown format";
+    }
+
+    private void Import()
+    {
+        _error = null;
+        try
+        {
+            if (CurlParser.LooksLikeCurl(_text))
+            {
+                State.OpenNew(CurlParser.Parse(_text));
+                Overlays.Close();
+                return;
+            }
+
+            var result = OpenApiImporter.LooksLikeOpenApi(_text) ? OpenApiImporter.Import(_text) : PostmanImporter.Import(_text);
+            _warnings = result.Warnings;
+            if (result.Collection is { } collection)
+            {
+                var count = collection.AllRequests().Count();
+                _result = State.ImportCollection(collection) is not null
+                    ? $"Imported collection '{collection.Name}' with {count} request{(count == 1 ? "" : "s")}."
+                    : null;
+                _error = _result is null ? State.Error ?? "The collection couldn't be saved." : null;
+            }
+            else if (result.Environment is { } env)
+            {
+                _result = State.ImportEnvironment(env) is not null
+                    ? $"Imported environment '{env.Name}' with {env.Variables.Count} variables.{(env.Variables.Any(v => v.Secret) ? " Secret values are now encrypted on this computer." : "")}"
+                    : null;
+                _error = _result is null ? State.Error ?? "The environment couldn't be saved." : null;
+            }
+        }
+        catch (Exception ex) when (ex is CurlParseException or ImportException)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private void OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Overlays.Close();
+    }
+}

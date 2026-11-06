@@ -57,6 +57,9 @@ public sealed record RequestSettings
     /// <summary>null = auto (HTTP/2 when the server offers it), or "1.1", "2", "3".</summary>
     public string? HttpVersion { get; set; }
 
+    /// <summary>Send cookies from the environment's cookie jar and store cookies the response sets.</summary>
+    public bool UseCookieJar { get; set; } = true;
+
     /// <summary>Client certificate for mutual TLS; null for none.</summary>
     public ClientCertificateSettings? ClientCertificate { get; set; }
 

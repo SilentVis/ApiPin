@@ -1,6 +1,7 @@
 @using ApiPin.Core.Execution
 @inject WorkspaceState State
 @inject UiActions Actions
+@inject Overlays Overlays
 
 <div class="request-editor">
     <div class="name-row">
@@ -28,6 +29,7 @@
         <button class="btn ghost" title="Save a copy into a collection (Ctrl+Shift+S)" disabled="@(State.Workspace is null)"
                 @onclick="() => Actions.SaveAsAsync(Tab)">Save as…</button>
         <button class="btn ghost" title="Duplicate this request in a new tab" @onclick="() => State.Duplicate(Tab)">Duplicate</button>
+        <button class="btn ghost" title="Code snippet: cURL, PowerShell, C#, JavaScript, Python (Ctrl+Shift+C)" @onclick="() => Overlays.Show(Overlay.Snippet)">Code</button>
     </div>
 
     @if (Tab.HasConflict)
@@ -226,6 +228,19 @@
 
     private void OnUrlChanged(string url)
     {
+        // Pasting a curl command into the URL bar turns it into the request.
+        if (ApiPin.Core.Conversion.CurlParser.LooksLikeCurl(url))
+        {
+            try
+            {
+                State.ApplyCurl(Tab, ApiPin.Core.Conversion.CurlParser.Parse(url));
+                return;
+            }
+            catch (ApiPin.Core.Conversion.CurlParseException)
+            {
+                // Still typing it: keep the text as the URL for now.
+            }
+        }
         Request.Url = url;
         Request.QueryParams = UrlTools.SyncQueryParams(Request.Url, Request.QueryParams);
         Request.PathParams = UrlTools.SyncPathParams(Request.Url, Request.PathParams);

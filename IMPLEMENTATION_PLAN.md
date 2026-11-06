@@ -328,15 +328,15 @@ Effort is in **focused dev-days** for one developer. Each phase ends with a usab
 
 ### Phase 6 — Productivity (≈ 6–7 days)
 
-- [ ] **History**: every sent request + response summary (body optional, size-capped); searchable; "restore into new tab"; retention settings
-- [ ] **cURL import** (paste a `curl` command → a request) and **Copy as cURL**
-- [ ] **Code snippets**: C# `HttpClient`, PowerShell `Invoke-RestMethod`, JavaScript `fetch`, Python `requests`
-- [ ] **Postman collection v2.1 import**, including environments (migration path from Postman)
-- [ ] **OpenAPI 3 import** → collection, one request per operation, with example bodies (`Microsoft.OpenApi` library)
-- [ ] Cookie jar viewer/editor per environment
-- [ ] GraphQL body type: query + variables editors
-- [ ] Keyboard shortcut map and command palette (`Ctrl+K`)
-- [ ] Tab management: reorder, close others, reopen closed tab (`Ctrl+Shift+T`)
+- [x] **History**: every sent request + response summary (body optional, size-capped); searchable; "restore into new tab"; retention settings (rolling `history.jsonl` in app data; sidebar History view; retention in ⚙ Settings)
+- [x] **cURL import** (paste a `curl` command → a request) and **Copy as cURL** (paste into the URL bar or the Import dialog; bash and Windows cmd forms, as browsers copy them)
+- [x] **Code snippets**: C# `HttpClient`, PowerShell `Invoke-RestMethod`, JavaScript `fetch`, Python `requests` (plus cURL for bash and cmd; variables resolved or left as written)
+- [x] **Postman collection v2.1 import**, including environments (migration path from Postman) (v2.0 too; scripts and unsupported auth types are listed as warnings)
+- [x] **OpenAPI 3 import** → collection, one request per operation, with example bodies (`Microsoft.OpenApi` library) (JSON or YAML, Swagger 2.0 too; folders per tag, `{{baseUrl}}` from the first server, bodies from examples or generated from schemas, collection auth from the security scheme)
+- [x] Cookie jar viewer/editor per environment (cookies are stored from responses and sent automatically unless turned off per request; jars last until the app closes)
+- [x] GraphQL body type: query + variables editors
+- [x] Keyboard shortcut map and command palette (`Ctrl+K`) (commands, every saved request and environments; `Ctrl+/` for the map, `Ctrl+E` environments, `Ctrl+Shift+C` code)
+- [x] Tab management: reorder, close others, reopen closed tab (`Ctrl+Shift+T`) (drag tabs; right-click for close others / to the right / all, duplicate)
 
 **Exit criteria:** an existing Postman collection imports cleanly and the common daily flows are possible from the keyboard.
 

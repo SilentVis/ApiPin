@@ -8,6 +8,7 @@ namespace ApiPin.Core.Models;
 [JsonDerivedType(typeof(FormUrlEncodedBody), "form")]
 [JsonDerivedType(typeof(MultipartBody), "multipart")]
 [JsonDerivedType(typeof(BinaryFileBody), "binary")]
+[JsonDerivedType(typeof(GraphQlBody), "graphql")]
 public abstract class BodyConfig
 {
     public abstract BodyConfig Clone();
@@ -100,4 +101,20 @@ public sealed class BinaryFileBody : BodyConfig
 
     public override BodyConfig Map(Func<string, string> map) =>
         new BinaryFileBody { FilePath = map(FilePath), ContentType = ContentType is null ? null : map(ContentType) };
+}
+
+/// <summary>A GraphQL operation, sent as JSON: <c>{ "query": …, "variables": {…}, "operationName": … }</c>.</summary>
+public sealed class GraphQlBody : BodyConfig
+{
+    public string Query { get; set; } = "";
+
+    /// <summary>JSON object text; empty for none.</summary>
+    public string Variables { get; set; } = "";
+
+    public string? OperationName { get; set; }
+
+    public override BodyConfig Clone() => new GraphQlBody { Query = Query, Variables = Variables, OperationName = OperationName };
+
+    public override BodyConfig Map(Func<string, string> map) =>
+        new GraphQlBody { Query = map(Query), Variables = map(Variables), OperationName = OperationName is null ? null : map(OperationName) };
 }

@@ -1,0 +1,89 @@
+@* The active request as code: cURL, PowerShell, C#, JavaScript, Python. *@
+@using ApiPin.Core.Auth
+@using ApiPin.Core.Conversion
+@inject WorkspaceState State
+@inject TokenService Tokens
+@inject Overlays Overlays
+@inject IJSRuntime JS
+
+<div class="modal-backdrop">
+    <div class="modal wide snippet-dialog" role="dialog" aria-modal="true" aria-label="Code snippet" @onkeydown="OnKey">
+        <h3>Code: @State.Active.Title</h3>
+        <div class="inline">
+            <div class="segmented">
+                @foreach (var language in Enum.GetValues<SnippetLanguage>())
+                {
+                    <button class="@(language == _language ? "active" : null)" @onclick="() => _language = language">@CodeSnippets.LanguageName(language)</button>
+                }
+            </div>
+            <span class="spacer"></span>
+            <label class="check compact">
+                <input type="checkbox" checked="@_resolve" @onchange="e => _resolve = e.Value is true" /> Resolve variables
+            </label>
+            <button class="btn ghost" @onclick="Copy">@(_copied ? "Copied" : "Copy")</button>
+        </div>
+        @{
+            var (snippet, note) = Generate();
+        }
+        @if (note is not null)
+        {
+            <p class="hint">@note</p>
+        }
+        <pre class="code snippet">@snippet</pre>
+        <div class="modal-actions">
+            <button class="btn" @onclick="Overlays.Close">Close</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private SnippetLanguage _language = SnippetLanguage.Curl;
+    private bool _resolve = true;
+    private bool _copied;
+    private string _code = "";
+
+    private (string Code, string? Note) Generate()
+    {
+        var tab = State.Active;
+        var request = _resolve
+            ? State.Prepare(tab).Request
+            : ApiPin.Core.Execution.InheritanceResolver.Apply(tab.Request, State.ChainFor(tab));
+        string? note = _resolve ? "Contains resolved values, including any secrets." : null;
+
+        if (TokenService.Handles(request.Auth))
+        {
+            var token = _resolve ? Tokens.Cached(request.Auth)?.AccessToken : null;
+            var prefix = request.Auth is OAuth2Auth o ? o.HeaderPrefix : "Bearer";
+            request.Auth = new BearerAuth { Token = token ?? "<access token>", Prefix = prefix };
+            if (token is null) note = "The OAuth/Azure token is shown as <access token>: get a token first (Auth tab) to include it.";
+        }
+        if (request.Auth is WindowsAuth)
+        {
+            request.Auth = new NoAuth();
+            note = "Windows auth (Negotiate/NTLM) isn't included; most tools have a flag for it (curl --negotiate -u :).";
+        }
+
+        try
+        {
+            _code = CodeSnippets.Generate(request, _language);
+        }
+        catch (RequestBuildException ex)
+        {
+            _code = "";
+            note = ex.Message;
+        }
+        return (_code, note);
+    }
+
+    private async Task Copy()
+    {
+        await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/ApiPin.UI/apipin.js");
+        await module.InvokeVoidAsync("copyText", _code);
+        _copied = true;
+    }
+
+    private void OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Overlays.Close();
+    }
+}

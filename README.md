@@ -7,10 +7,9 @@ A lightweight, local-first alternative to Postman for building and sending HTTP 
 
 ## Status
 
-**v0.4 — key features, collections, environments and advanced auth.** Request tabs, the request editor and the
-response viewer work end to end; requests are saved into collections on disk and exported for Postman; environments
-re-target every request, with secrets kept out of Git; OAuth 2.0, Azure CLI tokens, client certificates and proxies
-work. Productivity features (history, cURL, imports — Phase 6) are next.
+**v0.5 — everything for daily use.** Requests, collections, environments with encrypted secrets, OAuth 2.0 and the
+other auth types, history, imports (Postman, OpenAPI, cURL), code snippets and a command palette.
+Captures, assertions and a CLI runner (Phase 7) are next.
 See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the architecture and roadmap.
 
 What works today:
@@ -40,11 +39,18 @@ What works today:
 - **Drag and drop** requests, folders and collections in the sidebar to reorder or move them
 - **Git-friendly:** changes made outside ApiPin (a `git pull`) are picked up automatically; a tab with unsaved edits
   asks whether to keep them or take the version on disk
+- **History** of every sent request (sidebar → History): search it, and click an entry to reopen it with its response
+- **Import** Postman collections and environments, OpenAPI 3 / Swagger 2.0 (JSON or YAML) and `curl` commands —
+  paste a `curl` straight into the URL bar; **Code** turns a request into cURL, PowerShell, C#, JavaScript or Python
+- **GraphQL** bodies (query + variables); a **cookie jar** per environment (🍪 in the top bar)
+- **Command palette** (`Ctrl+K`) for commands, saved requests and environments; `Ctrl+/` lists the shortcuts;
+  drag tabs to reorder, right-click them to close others, `Ctrl+Shift+T` reopens a closed one
 - **Postman export:** any collection to Postman Collection v2.1 (`<name>.postman_collection.json`), which Postman,
   Insomnia and Bruno can import
 - **Tabs** are kept across restarts in `%APPDATA%\ApiPin\scratch-tabs.json`; dark/light theme follows Windows
-- **Shortcuts:** `Ctrl+Enter` send · `Ctrl+S` save · `Ctrl+T` new tab · `Ctrl+W` close tab · `Ctrl+Tab` / `Ctrl+Shift+Tab` switch tabs
-  (in the browser version: `Alt+T` / `Alt+W`, since the browser keeps the Ctrl ones)
+- **Shortcuts:** `Ctrl+K` palette · `Ctrl+Enter` send · `Ctrl+S` save · `Ctrl+T` new tab · `Ctrl+W` close tab ·
+  `Ctrl+Shift+T` reopen · `Ctrl+Tab` / `Ctrl+Shift+Tab` switch tabs (in the browser version: `Alt+T` / `Alt+W` /
+  `Alt+Shift+T`, since the browser keeps the Ctrl ones)
 - **Two hosts, same UI:** a Windows desktop app, and a browser version served from `localhost`
 
 > Open tabs, including any passwords and tokens you typed into them, are saved as plain text in app data.

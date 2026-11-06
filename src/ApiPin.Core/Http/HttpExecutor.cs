@@ -14,7 +14,10 @@ public sealed class HttpExecutorOptions
 
 public interface IHttpExecutor
 {
-    Task<ResponseResult> SendAsync(RequestDefinition request, CancellationToken cancellationToken = default);
+    /// <param name="cookies">Cookie jar: its cookies are sent (unless the request sets a Cookie header) and Set-Cookie responses update it.</param>
+    Task<ResponseResult> SendAsync(RequestDefinition request, System.Net.CookieContainer? cookies, CancellationToken cancellationToken = default);
+
+    Task<ResponseResult> SendAsync(RequestDefinition request, CancellationToken cancellationToken = default) => SendAsync(request, null, cancellationToken);
 }
 
 /// <param name="tokens">Gets OAuth 2.0 / Azure CLI tokens; without it those auth types fail with a message.</param>
@@ -23,7 +26,9 @@ public sealed class HttpExecutor(HandlerPool pool, HttpExecutorOptions? options 
     private readonly HttpExecutorOptions _options = options ?? new();
 
     /// <summary>Sends a request whose inheritance and variables are already resolved (see <see cref="Execution.RequestPreparer"/>).</summary>
-    public async Task<ResponseResult> SendAsync(RequestDefinition request, CancellationToken cancellationToken = default)
+    public Task<ResponseResult> SendAsync(RequestDefinition request, CancellationToken cancellationToken = default) => SendAsync(request, null, cancellationToken);
+
+    public async Task<ResponseResult> SendAsync(RequestDefinition request, System.Net.CookieContainer? cookies, CancellationToken cancellationToken = default)
     {
         // Pipeline step 3: token-based auth becomes a bearer header.
         if (TokenService.Handles(request.Auth))
@@ -60,6 +65,11 @@ public sealed class HttpExecutor(HandlerPool pool, HttpExecutorOptions? options 
 
         using (message)
         {
+            if (cookies is not null && request.Settings.UseCookieJar && message.RequestUri is { } target && !message.Headers.Contains("Cookie"))
+            {
+                var jarCookies = cookies.GetCookieHeader(target);
+                if (jarCookies.Length > 0) message.Headers.TryAddWithoutValidation("Cookie", jarCookies);
+            }
             var sent = DescribeSent(message);
             try
             {
@@ -83,6 +93,16 @@ public sealed class HttpExecutor(HandlerPool pool, HttpExecutorOptions? options 
 
                 var (body, size, truncated) = await ReadBodyAsync(response.Content, linked.Token);
                 var total = stopwatch.Elapsed;
+
+                if (cookies is not null && request.Settings.UseCookieJar && response.Headers.TryGetValues("Set-Cookie", out var toStore))
+                {
+                    var from = response.RequestMessage?.RequestUri ?? message.RequestUri!;
+                    foreach (var value in toStore)
+                    {
+                        try { cookies.SetCookies(from, value); }
+                        catch (System.Net.CookieException) { } // malformed or for another domain: shown, not stored
+                    }
+                }
 
                 var headers = response.Headers.Concat(response.Content.Headers)
                     .SelectMany(h => h.Value.Select(v => KeyValuePair.Create(h.Key, v)))

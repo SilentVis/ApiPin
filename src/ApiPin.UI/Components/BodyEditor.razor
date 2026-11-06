@@ -89,6 +89,26 @@
             </div>
             break;
 
+        case GraphQlBody graphql:
+            <div class="graphql">
+                <div class="graphql-query">
+                    <h4 class="section-title">Query</h4>
+                    <VarInput Multiline="true" HostClass="body-host" Class="code-input body-text" Value="@graphql.Query" Variables="Variables"
+                              Placeholder="query Order($id: ID!) { order(id: $id) { id status } }" ValueChanged="v => Set(() => graphql.Query = v)" />
+                </div>
+                <div class="graphql-vars">
+                    <h4 class="section-title">Variables (JSON)</h4>
+                    <VarInput Multiline="true" HostClass="body-host" Class="code-input body-text" Value="@graphql.Variables" Variables="Variables"
+                              Placeholder="{ &quot;id&quot;: &quot;42&quot; }" ValueChanged="v => Set(() => graphql.Variables = v)" />
+                    <label class="field stacked">
+                        <span>Operation name (optional)</span>
+                        <input value="@graphql.OperationName" spellcheck="false" @oninput="e => Set(() => graphql.OperationName = Str(e) is { Length: > 0 } n ? n : null)" />
+                    </label>
+                </div>
+            </div>
+            <p class="hint">Sent as a JSON POST: <code>{ "query", "variables", "operationName" }</code>.</p>
+            break;
+
         case BinaryFileBody binary:
             <label class="field">
                 <span>File</span>
@@ -115,7 +135,7 @@
 
     private static readonly (string Key, string Label)[] Types =
     [
-        ("none", "None"), ("raw", "Raw"), ("form", "Form URL-encoded"), ("multipart", "Multipart form"), ("binary", "Binary file"),
+        ("none", "None"), ("raw", "Raw"), ("form", "Form URL-encoded"), ("multipart", "Multipart form"), ("binary", "Binary file"), ("graphql", "GraphQL"),
     ];
 
     private BodyConfig Body => Tab.Request.Body;
@@ -130,6 +150,7 @@
         FormUrlEncodedBody => "form",
         MultipartBody => "multipart",
         BinaryFileBody => "binary",
+        GraphQlBody => "graphql",
         _ => "none",
     };
 
@@ -156,6 +177,7 @@
             "form" => typeof(FormUrlEncodedBody),
             "multipart" => typeof(MultipartBody),
             "binary" => typeof(BinaryFileBody),
+            "graphql" => typeof(GraphQlBody),
             _ => typeof(NoBody),
         };
         Tab.Request.Body = Tab.BodyCache.TryGetValue(type, out var cached) ? cached : (BodyConfig)Activator.CreateInstance(type)!;

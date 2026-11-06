@@ -202,6 +202,12 @@ public static class PostmanExporter
 
         BinaryFileBody binary => BinaryBody(binary, headers),
 
+        GraphQlBody graphql => new JsonObject
+        {
+            ["mode"] = "graphql",
+            ["graphql"] = new JsonObject { ["query"] = graphql.Query, ["variables"] = graphql.Variables },
+        },
+
         _ => null,
     };
 
