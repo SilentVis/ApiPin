@@ -20,6 +20,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\ApiPin.Core\ApiPin.Core.csproj" />
     <ProjectReference Include="..\..\tools\ApiPin.EchoServer\ApiPin.EchoServer.csproj" />
+    <ProjectReference Include="..\..\src\ApiPin.Cli\ApiPin.Cli.csproj" />
   </ItemGroup>
 
 </Project>

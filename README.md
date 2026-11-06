@@ -72,6 +72,8 @@ without touching the engine or the host.
 | `src/ApiPin.UI` | Razor components, UI state, CSS and a small JS module |
 | `src/ApiPin.Desktop` | WPF window hosting the UI in a `BlazorWebView` |
 | `src/ApiPin.Web` | Blazor Server host: the same UI in any browser, served from `localhost` |
+| `src/ApiPin.Cli` | `apipin run`: runs a collection with captures and assertions, for terminals and CI |
+| `samples/echo-api-tests` | A workspace with a log in → create → get → delete flow against the EchoServer |
 | `tests/*` | Unit tests, plus integration tests that run every body and auth type against the EchoServer in-process |
 | `tools/ApiPin.EchoServer` | Answers any request with a JSON description of it, for manual testing |
 
@@ -172,6 +174,27 @@ It listens on `localhost:5100` only. Change it with `--urls`, for example
 Don't bind it to a network address without putting authentication in front: anyone who can reach it
 can make this machine send HTTP requests on their behalf.
 
+### Command line and CI
+
+`apipin run` runs a collection (or one folder of it) in order. Each request's **captures** set variables for the
+requests after it (for example `$.access_token` → `{{token}}`), and its **assertions** check the response. It exits
+with 0 when everything passed, 1 when something failed and 2 for usage errors.
+
+```bash
+dotnet run --project src/ApiPin.Cli -- run samples/echo-api-tests -e Local
+```
+
+```bash
+dotnet run --project src/ApiPin.Cli -- run ./api-tests -c "Orders API" -e Staging -r junit -o results.xml -v token=$TOKEN
+```
+
+Secret variables come from your ApiPin secret store when it's there; in CI, pass them with `--var key=value` or as
+`APIPIN_VAR_<key>` environment variables. Run `apipin --help` for every option. The sample needs the echo server
+running (below).
+
+Captures and assertions live in the request files (`captures` and `assertions`); see
+`samples/echo-api-tests/collections/items-api` for examples. Editing them in the app comes next.
+
 ### Echo server
 
 Run the echo server to try requests against. It listens on HTTP port 5080, and on HTTPS port 7090 when the
@@ -199,6 +222,7 @@ cookies, headers and body, exactly as the server received them.
 | `/oauth/token` | Fake OAuth 2.0 token endpoint: client credentials, password, authorization code (with PKCE) and refresh token. Client `apipin` / `secret`, user `user` / `pass`; add `?lifetime=60` for short-lived tokens |
 | `/oauth/authorize` | Approves at once and redirects back with a code |
 | `/oauth/me` | Protected resource: needs a valid token from `/oauth/token` |
+| `/items`, `/items/{id}` | A small CRUD API (GET, POST, DELETE) behind tokens from `/oauth/token`, for chaining demos |
 
 ### App data
 

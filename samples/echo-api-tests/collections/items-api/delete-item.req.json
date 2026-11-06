@@ -1,0 +1,28 @@
+{
+  "id": "a1d2c3b4-2222-4a2b-9c3d-000000000004",
+  "name": "Delete item",
+  "method": "DELETE",
+  "url": "{{baseUrl}}/items/:id",
+  "queryParams": [],
+  "pathParams": [
+    { "enabled": true, "key": "id", "value": "{{itemId}}" }
+  ],
+  "headers": [],
+  "auth": {
+    "type": "inherit"
+  },
+  "body": {
+    "type": "none"
+  },
+  "settings": {
+    "timeoutMs": 30000,
+    "followRedirects": true,
+    "maxRedirects": 10,
+    "verifyTls": true,
+    "useCookieJar": true
+  },
+  "seq": 3,
+  "assertions": [
+    { "enabled": true, "kind": "status", "target": "", "operator": "equals", "expected": "204" }
+  ]
+}

@@ -2,6 +2,7 @@ using System.Text.Json;
 using ApiPin.Core.Execution;
 using ApiPin.Core.Http;
 using ApiPin.Core.Models;
+using ApiPin.Core.Testing;
 using ApiPin.Core.Variables;
 using ApiPin.Storage;
 using ApiPin.Storage.Postman;
@@ -215,6 +216,10 @@ public sealed class WorkspaceState : IDisposable
             var snapshot = tab.Request.Clone(newId: false);
             tab.Response = await _executor.SendAsync(prepared.Request, CookieJar, cts.Token);
             RecordHistory(snapshot, tab.Response);
+
+            // Captures set variables for the next requests; assertions show in the Tests tab.
+            tab.TestReport = ResponseTester.Run(snapshot, tab.Response, prepared.Variables);
+            if (tab.TestReport.Captures.Count > 0) ApplyCaptures(tab.TestReport.Captures);
         }
         finally
         {
@@ -318,10 +323,55 @@ public sealed class WorkspaceState : IDisposable
     /// <summary>Runtime, environment and global variables. Collection and folder variables are added per request.</summary>
     private VariableContext BaseVariables()
     {
-        var context = VariableContext.Empty;
+        var context = VariableContext.Empty.With(VariableSource.Runtime, "runtime", RuntimeVariables);
         if (Workspace is null) return context;
         if (Workspace.ActiveEnvironment is { } env) context = context.With(VariableSource.Environment, env.Name, env.Variables);
         return context.With(VariableSource.Global, "Globals", Workspace.Globals);
+    }
+
+    // ---------- Runtime variables, captures and runs ----------
+
+    /// <summary>Values captured from responses (or set by a run); highest precedence, kept until the app closes.</summary>
+    public Dictionary<string, string> RuntimeVariables { get; } = new(StringComparer.Ordinal);
+
+    public void ClearRuntimeVariables()
+    {
+        RuntimeVariables.Clear();
+        Changed?.Invoke();
+    }
+
+    private void ApplyCaptures(IEnumerable<CaptureResult> captures)
+    {
+        var run = new RunVariables { Environment = ActiveEnvironment, EnvironmentChanged = SaveEnvironment };
+        foreach (var (k, v) in RuntimeVariables) run.Runtime[k] = v;
+        run.Apply(captures);
+        RuntimeVariables.Clear();
+        foreach (var (k, v) in run.Runtime) RuntimeVariables[k] = v;
+    }
+
+    private void SaveEnvironment(EnvironmentDefinition env) => Run(() => _store!.SaveEnvironment(env));
+
+    /// <summary>Runs a folder or collection with the active environment; captures persist like single sends do.</summary>
+    public async Task<RunResult> RunAsync(RequestFolder folder, RunOptions options, IProgress<RunStep> progress, CancellationToken cancellationToken)
+    {
+        var chain = ChainOf(folder);
+        var variables = new RunVariables
+        {
+            Environment = ActiveEnvironment,
+            Globals = Workspace?.Globals ?? [],
+            Cookies = CookieJar,
+            EnvironmentChanged = SaveEnvironment,
+        };
+        foreach (var (k, v) in RuntimeVariables) variables.Runtime[k] = v;
+
+        var items = CollectionRunner.Plan(folder, chain.Take(chain.Count - 1).ToList());
+        var result = await new CollectionRunner(_executor).RunAsync(items, variables, options, progress, cancellationToken);
+
+        variables.Runtime.Remove("$iteration");
+        RuntimeVariables.Clear();
+        foreach (var (k, v) in variables.Runtime) RuntimeVariables[k] = v;
+        Changed?.Invoke();
+        return result;
     }
 
     // ---------- Environments ----------

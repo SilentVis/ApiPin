@@ -1,0 +1,11 @@
+{
+  "id": "a1d2c3b4-1111-4a2b-9c3d-000000000001",
+  "name": "Items API",
+  "description": "Log in, create an item, read it back, delete it, and check it's gone. Run it against the EchoServer: `apipin run samples/echo-api-tests -e Local`.",
+  "seq": 0,
+  "auth": {
+    "type": "bearer",
+    "token": "{{token}}",
+    "prefix": "Bearer"
+  }
+}

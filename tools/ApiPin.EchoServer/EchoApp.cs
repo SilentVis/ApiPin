@@ -155,8 +155,37 @@ public static class EchoApp
         app.MapGet("/oauth/authorize", (HttpContext ctx, OAuthServer oauth) => oauth.Authorize(ctx));
         app.Map("/oauth/me", (HttpContext ctx, OAuthServer oauth) => oauth.Me(ctx));
 
+        // A tiny CRUD API behind OAuth tokens, for chaining demos: log in → create → get → delete.
+        var items = new ConcurrentDictionary<int, JsonElement>();
+        var nextId = 0;
+        app.MapGet("/items", (HttpContext ctx, OAuthServer oauth) =>
+            oauth.IsAuthorized(ctx) ? Results.Json(items.OrderBy(i => i.Key).Select(i => i.Value), Json) : Unauthorized(ctx));
+        app.MapPost("/items", async (HttpContext ctx, OAuthServer oauth) =>
+        {
+            if (!oauth.IsAuthorized(ctx)) return Unauthorized(ctx);
+            JsonElement body;
+            try { body = await JsonSerializer.DeserializeAsync<JsonElement>(ctx.Request.Body, cancellationToken: ctx.RequestAborted); }
+            catch (JsonException) { return Results.BadRequest(new { error = "Send a JSON object." }); }
+            if (body.ValueKind != JsonValueKind.Object) return Results.BadRequest(new { error = "Send a JSON object." });
+            var id = Interlocked.Increment(ref nextId);
+            var item = new Dictionary<string, object?> { ["id"] = id, ["createdAt"] = DateTimeOffset.UtcNow };
+            foreach (var p in body.EnumerateObject()) if (p.Name != "id") item[p.Name] = p.Value;
+            items[id] = JsonSerializer.SerializeToElement(item);
+            return Results.Json(items[id], Json, statusCode: 201);
+        });
+        app.MapGet("/items/{id:int}", (int id, HttpContext ctx, OAuthServer oauth) =>
+            !oauth.IsAuthorized(ctx) ? Unauthorized(ctx) : items.TryGetValue(id, out var item) ? Results.Json(item, Json) : Results.NotFound(new { error = $"No item {id}." }));
+        app.MapDelete("/items/{id:int}", (int id, HttpContext ctx, OAuthServer oauth) =>
+            !oauth.IsAuthorized(ctx) ? Unauthorized(ctx) : items.TryRemove(id, out _) ? Results.NoContent() : Results.NotFound(new { error = $"No item {id}." }));
+
         app.MapFallback(Echo);
         return app;
+    }
+
+    private static IResult Unauthorized(HttpContext ctx)
+    {
+        ctx.Response.Headers.WWWAuthenticate = "Bearer";
+        return Results.Json(new { error = "invalid_token", hint = "Get a token from /oauth/token first." }, Json, statusCode: 401);
     }
 
     // ---------- Echo ----------
@@ -457,6 +486,12 @@ internal sealed class OAuthServer
             default:
                 return Error("unsupported_grant_type", "Use client_credentials, password, authorization_code or refresh_token.");
         }
+    }
+
+    public bool IsAuthorized(HttpContext ctx)
+    {
+        var header = ctx.Request.Headers.Authorization.ToString();
+        return header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) && Validate(header[7..].Trim()) is not null;
     }
 
     /// <summary>A protected resource: requires a valid, unexpired token issued by this server.</summary>

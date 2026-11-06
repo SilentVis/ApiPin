@@ -342,13 +342,13 @@ Effort is in **focused dev-days** for one developer. Each phase ends with a usab
 
 ### Phase 7 — Chaining, assertions and CLI (≈ 6–7 days)
 
-- [ ] **Captures** (no scripting): after a response, set a variable from JSONPath / header / regex / status. Example: `login` → `$.accessToken` → `{{token}}`. Target scope: runtime or active environment
-- [ ] **Assertions** (declarative): status equals/in range, header exists/equals, JSONPath equals/contains/exists, response time < N ms, body matches a JSON Schema
+- [x] **Captures** (no scripting): after a response, set a variable from JSONPath / header / regex / status. Example: `login` → `$.accessToken` → `{{token}}`. Target scope: runtime or active environment (engine, runner and CLI done; single sends in the app apply them too, but there is no editor for them in the UI yet — edit the `captures` list in the request file)
+- [x] **Assertions** (declarative): status equals/in range, header exists/equals, JSONPath equals/contains/exists, response time < N ms, body matches a JSON Schema (also body contains/matches, < and >; JSONPath and JSON Schema are built-in subsets; same note as captures: no UI editor yet)
 - [ ] Test results tab on the response panel (pass/fail list)
 - [ ] **Collection runner** in the UI: run a folder/collection in order with an environment, optional iteration count and delay; summary report
-- [ ] **`ApiPin.Cli`** as a `dotnet tool`: `apipin run ./my-api-tests --collection orders-api --env staging --reporter junit` (reuses Core + Storage), so the same collections run in CI pipelines (GitHub Actions / Azure DevOps)
+- [x] **`ApiPin.Cli`** as a `dotnet tool`: `apipin run ./my-api-tests --collection orders-api --env staging --reporter junit` (reuses Core + Storage), so the same collections run in CI pipelines (GitHub Actions / Azure DevOps) (console, JUnit and JSON reporters; `--folder`, `--var`, `APIPIN_VAR_*`, `--iterations`, `--delay`, `--bail`, `--insecure`, `--timeout`; exit codes 0 / 1 / 2)
 
-**Exit criteria:** the login → create → get → delete flow runs green both in the UI runner and in CI via the CLI.
+**Exit criteria:** the login → create → get → delete flow runs green both in the UI runner and in CI via the CLI. (CLI half met: `samples/echo-api-tests` runs green against the EchoServer, including its new token-protected `/items` API. Still to do: the captures/assertions editor in the request editor, the test results tab and the UI runner.)
 
 ### Phase 8 — Packaging and release (≈ 3 days)
 

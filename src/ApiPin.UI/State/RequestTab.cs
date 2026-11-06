@@ -22,6 +22,9 @@ public sealed class RequestTab(RequestDefinition request)
     /// <summary>Variable problems found when the response was sent (unresolved or cyclic names).</summary>
     public ResolveReport? LastReport { get; internal set; }
 
+    /// <summary>Captures and assertions of the last response.</summary>
+    public ApiPin.Core.Testing.TestReport? TestReport { get; internal set; }
+
     public string RequestSection { get; set; } = "params";
     public string ResponseSection { get; set; } = "body";
 

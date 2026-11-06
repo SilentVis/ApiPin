@@ -29,6 +29,12 @@ public sealed class RequestDefinition
     /// <summary>Order inside its folder when saved in a collection.</summary>
     public int Seq { get; set; }
 
+    /// <summary>Variables set from the response (chaining requests).</summary>
+    public List<CaptureRule> Captures { get; set; } = [];
+
+    /// <summary>Checks on the response, shown in the Tests tab and used by the runner and CLI.</summary>
+    public List<Assertion> Assertions { get; set; } = [];
+
     public RequestDefinition Clone(bool newId = true) => new()
     {
         Id = newId ? Guid.NewGuid() : Id,
@@ -42,6 +48,8 @@ public sealed class RequestDefinition
         Auth = Auth.Clone(),
         Body = Body.Clone(),
         Settings = Settings.Copy(),
+        Captures = Captures.ConvertAll(c => c.Clone()),
+        Assertions = Assertions.ConvertAll(a => a.Clone()),
     };
 }
 
