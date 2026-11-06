@@ -148,11 +148,33 @@ can make this machine send HTTP requests on their behalf.
 
 ### Echo server
 
-Run the echo server to try requests against (default port 5080):
+Run the echo server to try requests against. It listens on HTTP port 5080, and on HTTPS port 7090 when the
+ASP.NET dev certificate is installed (`dotnet dev-certs https --trust`):
 
 ```bash
-dotnet run --project tools/ApiPin.EchoServer -- 5080
+dotnet run --project tools/ApiPin.EchoServer -- --port 5080 --https-port 7090
 ```
 
-Then send anything to `http://localhost:5080/...` from ApiPin. The response shows the method, URL, query,
-decoded auth, headers and body exactly as the server received them.
+Any path not listed below answers with a JSON description of the request: method, URL, query, decoded auth,
+cookies, headers and body, exactly as the server received them.
+
+| Endpoint | What it does |
+|---|---|
+| `/echo` | Echoes the request (also the fallback for any other path) |
+| `/status/{code}` | Answers with that status code |
+| `/delay/{ms}` | Waits, then echoes |
+| `/redirect/{n}` | Redirects `n` times, then lands on `/echo`; `/redirect-to?url=…&status=307` for one redirect |
+| `/auth/basic` | Needs Basic `user` / `pass` (or `?user=…&password=…`) |
+| `/auth/bearer` | Needs any Bearer token (or exactly `?token=…`) |
+| `/auth/apikey` | Needs `X-API-Key: apipin-key` or `?api_key=apipin-key` |
+| `/cookies`, `/cookies/set?a=1`, `/cookies/delete?a` | Shows, sets and deletes cookies |
+| `/upload` | Lists multipart fields and files with sizes and SHA-256 hashes |
+| `/large/{mb}` | Streams a JSON array of about that many megabytes |
+| `/oauth/token` | Fake OAuth 2.0 token endpoint: client credentials, password, authorization code (with PKCE) and refresh token. Client `apipin` / `secret`, user `user` / `pass`; add `?lifetime=60` for short-lived tokens |
+| `/oauth/authorize` | Approves at once and redirects back with a code |
+| `/oauth/me` | Protected resource: needs a valid token from `/oauth/token` |
+
+### Logs
+
+The desktop app writes one log file per day to `%APPDATA%\ApiPin\logs` (the browser version to `logs\web`) and
+keeps the last 14 days.

@@ -3,6 +3,7 @@ using ApiPin.Core.Http;
 using ApiPin.Core.Models;
 using ApiPin.Storage;
 using ApiPin.Storage.Postman;
+using Microsoft.Extensions.Logging;
 
 namespace ApiPin.UI.State;
 
@@ -23,11 +24,13 @@ public sealed class WorkspaceState
     private readonly ScratchTabStore _scratch;
     private readonly AppSettingsStore _settings;
     private readonly IHttpExecutor _executor;
+    private readonly ILogger<WorkspaceState> _log;
     private CancellationTokenSource? _pendingSave;
     private WorkspaceStore? _store;
 
-    public WorkspaceState(ScratchTabStore scratch, AppSettingsStore settings, IHttpExecutor executor, WorkspaceStartup startup)
+    public WorkspaceState(ScratchTabStore scratch, AppSettingsStore settings, IHttpExecutor executor, WorkspaceStartup startup, ILogger<WorkspaceState> log)
     {
+        _log = log;
         _scratch = scratch;
         _settings = settings;
         _executor = executor;
@@ -140,9 +143,12 @@ public sealed class WorkspaceState
             _store = store;
             Error = null;
             if (remember) _settings.Save(new AppSettings { LastWorkspace = store.Root });
+            _log.LogInformation("Opened workspace {Root}: {Collections} collections, {Problems} skipped files",
+                store.Root, Workspace.Collections.Count, Workspace.Problems.Count);
         }
         catch (Exception ex) when (IsFileError(ex))
         {
+            _log.LogWarning(ex, "Could not open workspace {Path}", path);
             Error = $"Could not open workspace '{path}': {ex.Message}";
             if (_store is null) Workspace = null;
             Changed?.Invoke();
@@ -409,6 +415,7 @@ public sealed class WorkspaceState
         }
         catch (Exception ex) when (IsFileError(ex))
         {
+            _log.LogWarning(ex, "Workspace change failed");
             Error = ex.Message;
             return false;
         }

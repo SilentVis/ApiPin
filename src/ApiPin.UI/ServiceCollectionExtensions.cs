@@ -14,6 +14,7 @@ public static class ServiceCollectionExtensions
     /// <param name="startupWorkspace">Workspace folder to open instead of the last one (e.g. from the command line).</param>
     public static IServiceCollection AddApiPin(this IServiceCollection services, string? scratchFilePath = null, string? startupWorkspace = null)
     {
+        services.AddLogging();
         services.AddSingleton(new WorkspaceStartup(startupWorkspace));
         services.AddSingleton<HandlerPool>();
         services.AddSingleton(new HttpExecutorOptions());

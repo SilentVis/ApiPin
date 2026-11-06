@@ -249,8 +249,8 @@ Effort is in **focused dev-days** for one developer. Each phase ends with a usab
 
 - [x] Create the solution, projects and `Directory.Build.props` / `Directory.Packages.props` (nullable on, warnings as errors)
 - [x] WPF host with `BlazorWebView` rendering a "Hello ApiPin" Razor component; Fluent UI theme wired (dark/light follows Windows) (plain CSS light/dark theme instead of Fluent UI)
-- [ ] DI composition root in `ApiPin.Desktop`; `ILogger` to a rolling file in `%APPDATA%\ApiPin\logs` (DI root done; file logging still to do)
-- [ ] **EchoServer** minimal API: `/echo` (returns method, headers, query, body), `/status/{code}`, `/delay/{ms}`, `/redirect/{n}`, `/auth/basic`, `/auth/bearer`, `/auth/apikey`, `/cookies/set`, `/upload`, `/large/{mb}`, `/oauth/token` (fake client-credentials server) (catch-all echo done; dedicated endpoints still to do)
+- [x] DI composition root in `ApiPin.Desktop`; `ILogger` to a rolling file in `%APPDATA%\ApiPin\logs` (one file per day, 14 days kept; unhandled exceptions are logged)
+- [x] **EchoServer** minimal API: `/echo` (returns method, headers, query, body), `/status/{code}`, `/delay/{ms}`, `/redirect/{n}`, `/auth/basic`, `/auth/bearer`, `/auth/apikey`, `/cookies/set`, `/upload`, `/large/{mb}`, `/oauth/token` (fake client-credentials server) (also password, refresh-token and auth-code + PKCE grants via `/oauth/authorize`, and `/oauth/me` as a protected resource; HTTPS on 7090 uses the ASP.NET dev certificate when present)
 - [x] GitHub Actions: restore → build → test on push/PR
 - [x] `README.md` with build/run instructions
 
