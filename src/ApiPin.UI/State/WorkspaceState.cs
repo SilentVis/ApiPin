@@ -26,15 +26,17 @@ public sealed class WorkspaceState : IDisposable
     private readonly ScratchTabStore _scratch;
     private readonly AppSettingsStore _settings;
     private readonly IHttpExecutor _executor;
+    private readonly ISecretStore _secrets;
     private readonly ILogger<WorkspaceState> _log;
     private CancellationTokenSource? _pendingSave;
     private WorkspaceStore? _store;
     private WorkspaceWatcher? _watcher;
     private volatile bool _externalChangePending;
 
-    public WorkspaceState(ScratchTabStore scratch, AppSettingsStore settings, IHttpExecutor executor, WorkspaceStartup startup, ILogger<WorkspaceState> log)
+    public WorkspaceState(ScratchTabStore scratch, AppSettingsStore settings, IHttpExecutor executor, ISecretStore secrets, WorkspaceStartup startup, ILogger<WorkspaceState> log)
     {
         _log = log;
+        _secrets = secrets;
         _scratch = scratch;
         _settings = settings;
         _executor = executor;
@@ -159,7 +161,66 @@ public sealed class WorkspaceState : IDisposable
     public void Cancel(RequestTab tab) => tab.Sending?.Cancel();
 
     /// <summary>Runtime, environment and global variables. Collection and folder variables are added per request.</summary>
-    private static VariableContext BaseVariables() => VariableContext.Empty;
+    private VariableContext BaseVariables()
+    {
+        var context = VariableContext.Empty;
+        if (Workspace is null) return context;
+        if (Workspace.ActiveEnvironment is { } env) context = context.With(VariableSource.Environment, env.Name, env.Variables);
+        return context.With(VariableSource.Global, "Globals", Workspace.Globals);
+    }
+
+    // ---------- Environments ----------
+
+    public EnvironmentDefinition? ActiveEnvironment => Workspace?.ActiveEnvironment;
+
+    /// <summary>Picks the environment every request resolves its variables against; null for none.</summary>
+    public void SetActiveEnvironment(Guid? id)
+    {
+        if (Workspace is null || Workspace.ActiveEnvironmentId == id) return;
+        Workspace.ActiveEnvironmentId = Workspace.Environments.Any(e => e.Id == id) ? id : null;
+        Run(() => _store!.SaveActiveEnvironment(Workspace.ActiveEnvironmentId));
+    }
+
+    /// <summary>
+    /// Applies the environment manager's edits: saves new and changed environments, deletes removed ones,
+    /// and saves the globals. Secret values go to the secret store, not the files.
+    /// </summary>
+    public void SaveEnvironments(IReadOnlyList<EnvironmentDefinition> environments, List<Variable> globals)
+    {
+        if (Workspace is null) return;
+        var ws = Workspace;
+        var ok = Run(() =>
+        {
+            foreach (var removed in ws.Environments.Where(e => environments.All(n => n.Id != e.Id)).ToList())
+            {
+                _store!.Delete(removed.Id);
+                ws.Environments.Remove(removed);
+            }
+            foreach (var env in environments)
+            {
+                var clean = env.Clone();
+                clean.Variables = clean.Variables.Where(v => !v.IsEmpty).ToList();
+                var existing = ws.Environments.FirstOrDefault(e => e.Id == env.Id);
+                if (existing is not null && JsonSerializer.Serialize(existing) == JsonSerializer.Serialize(clean)) continue;
+                _store!.SaveEnvironment(clean);
+                if (existing is null) ws.Environments.Add(clean);
+                else ws.Environments[ws.Environments.IndexOf(existing)] = clean;
+            }
+
+            var cleanGlobals = globals.Where(v => !v.IsEmpty).Select(v => v.Clone()).ToList();
+            if (JsonSerializer.Serialize(cleanGlobals) != JsonSerializer.Serialize(ws.Globals))
+            {
+                ws.Globals = cleanGlobals;
+                _store!.SaveGlobals(ws);
+            }
+            if (ws.ActiveEnvironmentId is { } active && ws.Environments.All(e => e.Id != active))
+            {
+                ws.ActiveEnvironmentId = null;
+                _store!.SaveActiveEnvironment(null);
+            }
+        });
+        if (!ok) Reload();
+    }
 
     // ---------- Workspace ----------
 
@@ -168,7 +229,7 @@ public sealed class WorkspaceState : IDisposable
     {
         try
         {
-            var store = new WorkspaceStore(path);
+            var store = new WorkspaceStore(path, _secrets);
             Workspace = store.Load();
             Watch(store); // a new store per load, and the watcher asks it which changes were its own
             _store = store;

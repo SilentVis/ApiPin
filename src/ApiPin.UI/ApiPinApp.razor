@@ -10,6 +10,29 @@
         <button class="icon-btn" title="@(_sidebar ? "Hide collections" : "Show collections")" @onclick="ToggleSidebar">☰</button>
         <span class="brand"><img class="brand-mark" src="_content/ApiPin.UI/icon.svg" alt="" />ApiPin</span>
         <span class="spacer"></span>
+        @if (State.Workspace is { } ws)
+        {
+            <span class="env-picker">
+                <select class="compact" title="Environment" @key="_pickerKey" value="@(ws.ActiveEnvironmentId?.ToString() ?? NoEnvironment)" @onchange="OnEnvironmentChanged">
+                    <option value="@NoEnvironment">No environment</option>
+                    @foreach (var env in ws.OrderedEnvironments)
+                    {
+                        <option value="@env.Id">@env.Name</option>
+                    }
+                    <option value="@ManageEnvironments">Manage environments…</option>
+                </select>
+                @if (ws.ActiveEnvironment?.MissingSecrets.Count() is > 0 and var missing)
+                {
+                    <button class="badge warn as-button" title="Secret values aren't on this computer yet (e.g. after cloning). Enter them in the environment."
+                            @onclick="() => _environments = true">@missing secret@(missing == 1 ? "" : "s") missing</button>
+                }
+                <button class="icon-btn" title="Variables in effect" @onclick="() => _peek = !_peek">👁</button>
+            </span>
+            @if (_peek)
+            {
+                <VariablesPeek OnClose="() => _peek = false" />
+            }
+        }
         <span class="muted shortcuts">
             Ctrl+Enter send · Ctrl+S save · @(Platform.RunsInBrowser ? "Alt+T new tab · Alt+W close" : "Ctrl+T new tab · Ctrl+W close")
         </span>
@@ -39,6 +62,10 @@
     </div>
 
     <DialogHost />
+    @if (_environments)
+    {
+        <EnvironmentManager OnClose="() => _environments = false" />
+    }
 </div>
 
 @code {
@@ -48,6 +75,24 @@
     private ElementReference _splitter;
     private bool _sideBySide;
     private bool _sidebar = true;
+    private bool _peek;
+    private bool _environments;
+    private int _pickerKey;
+
+    private const string NoEnvironment = "none";
+    private const string ManageEnvironments = "manage";
+
+    private void OnEnvironmentChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        if (value == ManageEnvironments)
+        {
+            _environments = true;
+            _pickerKey++; // re-create the select so it shows the active environment again
+            return;
+        }
+        State.SetActiveEnvironment(Guid.TryParse(value, out var id) ? id : null);
+    }
 
     protected override void OnInitialized()
     {

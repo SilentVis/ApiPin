@@ -39,12 +39,12 @@
             break;
 
         case RawBody rawBody:
-            <textarea class="code-input body-text" spellcheck="false" wrap="off" value="@rawBody.Content"
-                      placeholder="@Placeholder(rawBody.Language)" @oninput="e => Set(() => rawBody.Content = Str(e))"></textarea>
+            <VarInput Multiline="true" HostClass="body-host" Class="code-input body-text" Value="@rawBody.Content" Variables="Variables"
+                      Placeholder="@Placeholder(rawBody.Language)" ValueChanged="v => Set(() => rawBody.Content = v)" />
             break;
 
         case FormUrlEncodedBody form:
-            <KeyValueGrid Items="form.Fields" OnChanged="State.MarkDirty" />
+            <KeyValueGrid Items="form.Fields" OnChanged="State.MarkDirty" Variables="Variables" />
             break;
 
         case MultipartBody multipart:
@@ -111,6 +111,7 @@
 
 @code {
     [Parameter, EditorRequired] public RequestTab Tab { get; set; } = null!;
+    [Parameter] public ApiPin.Core.Variables.VariableContext? Variables { get; set; }
 
     private static readonly (string Key, string Label)[] Types =
     [

@@ -1,0 +1,109 @@
+@* A text input (or textarea) that highlights {{variables}}: green when defined, red when not, and offers
+   suggestions after typing {{. The highlight is a backdrop under a transparent input, kept aligned by apipin.js. *@
+@using System.Net
+@using System.Text
+@using System.Text.Json
+@using ApiPin.Core.Variables
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="var-host @HostClass" data-vars="@NamesJson" @ref="_host">
+    <div class="var-backdrop" aria-hidden="true">@Highlighted()</div>
+    @if (Multiline)
+    {
+        <textarea class="@Class" value="@Value" placeholder="@Placeholder" spellcheck="false" wrap="off" title="@Tooltip"
+                  @oninput="OnInput" @attributes="Extra"></textarea>
+    }
+    else
+    {
+        <input class="@Class" value="@Value" placeholder="@Placeholder" spellcheck="false" autocomplete="off" title="@Tooltip"
+               @oninput="OnInput" @attributes="Extra" />
+    }
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+
+    /// <summary>Classes for the input itself.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Classes for the wrapper (sizing in flex/grid layouts).</summary>
+    [Parameter] public string? HostClass { get; set; }
+
+    [Parameter] public bool Multiline { get; set; }
+
+    /// <summary>Variables in effect; null turns highlighting and suggestions off.</summary>
+    [Parameter] public VariableContext? Variables { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? Extra { get; set; }
+
+    private const int MaxHighlightChars = 200_000;
+
+    private ElementReference _host;
+    private IJSObjectReference? _module;
+
+    private string? NamesJson => Variables is null
+        ? null
+        : JsonSerializer.Serialize(Variables.Effective().Select(e => e.Variable.Name).Concat(VariableResolver.DynamicVariables.Keys));
+
+    private string? Tooltip
+    {
+        get
+        {
+            if (Variables is null || !VariableResolver.HasReferences(Value)) return null;
+            var lines = VariableResolver.FindReferences(Value).Select(r => r.Name).Distinct().Select(name =>
+            {
+                if (VariableResolver.DynamicVariables.TryGetValue(name, out var description) && Variables.Lookup(name) is null) return $"{{{{{name}}}}}: {description}";
+                if (Variables.Lookup(name) is not { } v) return $"{{{{{name}}}}}: not defined";
+                var value = v.Secret ? "••••••" : VariableResolver.ResolveName(name, Variables) ?? v.Value;
+                return $"{{{{{name}}}}} = {value}  ({VariablesPeek.Source(v)})";
+            });
+            return string.Join(Environment.NewLine, lines);
+        }
+    }
+
+    private MarkupString Highlighted()
+    {
+        var text = Value ?? "";
+        if (text.Length > MaxHighlightChars) return default; // too big to mirror on every keystroke
+        var sb = new StringBuilder(text.Length + 32);
+        var pos = 0;
+        if (Variables is not null)
+        {
+            foreach (var r in VariableResolver.FindReferences(text))
+            {
+                sb.Append(WebUtility.HtmlEncode(text[pos..r.Index]));
+                var cls = Variables.Lookup(r.Name) is not null ? "ok" : r.IsDynamic && VariableResolver.DynamicVariables.ContainsKey(r.Name) ? "dyn" : "bad";
+                sb.Append("<span class=\"var-ref ").Append(cls).Append("\">").Append(WebUtility.HtmlEncode(text.Substring(r.Index, r.Length))).Append("</span>");
+                pos = r.Index + r.Length;
+            }
+        }
+        sb.Append(WebUtility.HtmlEncode(text[pos..]));
+        if (Multiline && text.EndsWith('\n')) sb.Append(' '); // keep the last empty line's height
+        return new MarkupString(sb.ToString());
+    }
+
+    private Task OnInput(ChangeEventArgs e) => ValueChanged.InvokeAsync(e.Value?.ToString() ?? "");
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/ApiPin.UI/apipin.js");
+            await _module.InvokeVoidAsync("attachVarHost", _host);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is null) return;
+        try { await _module.DisposeAsync(); }
+        catch (JSDisconnectedException) { }
+    }
+}

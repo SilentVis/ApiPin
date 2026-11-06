@@ -21,6 +21,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IHttpExecutor, HttpExecutor>();
         services.AddSingleton(new ScratchTabStore(scratchFilePath ?? ScratchTabStore.DefaultPath));
         services.AddSingleton(new AppSettingsStore(AppSettingsStore.DefaultPath));
+        services.AddSingleton<ISecretStore>(OperatingSystem.IsWindows()
+            ? new DpapiSecretStore(DpapiSecretStore.DefaultPath)
+            : new InMemorySecretStore()); // no DPAPI: secrets last until the app closes
         services.AddSingleton<WorkspaceState>();
         services.TryAddSingleton<IPlatformServices, BrowserPlatformServices>();
 

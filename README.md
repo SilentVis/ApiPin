@@ -7,9 +7,9 @@ A lightweight, local-first alternative to Postman for building and sending HTTP 
 
 ## Status
 
-**v0.2 — key features plus collections.** Request tabs, the request editor and the response viewer work end to end,
-and requests can be saved into collections on disk and exported for Postman.
-Environments (Phase 4) and OAuth 2.0 (Phase 5) are next.
+**v0.3 — key features, collections and environments.** Request tabs, the request editor and the response viewer work
+end to end; requests are saved into collections on disk and exported for Postman; environments re-target every
+request, with secrets kept out of Git. OAuth 2.0 (Phase 5) is next.
 See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the architecture and roadmap.
 
 What works today:
@@ -27,6 +27,11 @@ What works today:
 - **Folder and collection settings:** headers, auth and variables set on a collection or folder apply to the requests
   inside (requests inherit auth by default; a request's own header wins); `{{variables}}` work in the URL, params,
   headers, auth and body, including `{{$guid}}`, `{{$timestamp}}`, `{{$randomInt}}` and friends
+- **Environments:** pick Local / Staging / … in the top bar; manage them and the workspace globals in one dialog.
+  Variables are highlighted where you type them (green defined, red undefined), `{{` suggests names, the 👁 button
+  shows every variable in effect and where it comes from, and the **Resolved** tab shows the request as it will be sent
+- **Secrets:** variables marked secret are masked and their values are stored encrypted with Windows DPAPI in app data,
+  never in the workspace files; after a clone, missing secrets are flagged so you can enter them once
 - **Drag and drop** requests, folders and collections in the sidebar to reorder or move them
 - **Git-friendly:** changes made outside ApiPin (a `git pull`) are picked up automatically; a tab with unsaved edits
   asks whether to keep them or take the version on disk
@@ -37,8 +42,8 @@ What works today:
   (in the browser version: `Alt+T` / `Alt+W`, since the browser keeps the Ctrl ones)
 - **Two hosts, same UI:** a Windows desktop app, and a browser version served from `localhost`
 
-> Open tabs, including any passwords and tokens you typed, are saved as plain text in app data.
-> Encrypted secret storage (DPAPI) comes with environments in Phase 4.
+> Open tabs, including any passwords and tokens you typed into them, are saved as plain text in app data.
+> Put credentials in secret variables (`{{apiKey}}`) to keep them encrypted and out of Git.
 
 ## Tech stack
 
@@ -113,7 +118,11 @@ The layout is plain JSON with readable names, so it diffs and merges well in Git
 
 ```
 api-tests/
-├─ apipin.workspace.json
+├─ apipin.workspace.json        # name, id, global variables
+├─ .gitignore                   # generated: keeps .apipin/ (local state) out of Git
+├─ environments/
+│  ├─ local.env.json
+│  └─ staging.env.json
 └─ collections/
    └─ orders-api/
       ├─ collection.json
@@ -125,14 +134,14 @@ api-tests/
 
 File and folder names follow the display names (renaming in ApiPin renames them on disk), while ids inside the files
 keep links stable. Files ApiPin can't read are skipped and listed in the sidebar rather than breaking the workspace.
-After a `git pull`, use **Reload from disk** in the sidebar menu.
+Changes from a `git pull` are picked up automatically (**Reload from disk** in the sidebar menu forces it).
 
 Export a collection with **⋯ → Export as Postman v2.1…**. Per-request timeout and HTTP version have no Postman
 equivalent and are left out; a Bearer token with a custom prefix is exported as an `Authorization` header;
 Windows auth becomes NTLM (with blank credentials when it used the current user).
 
-> Saved requests store auth values (passwords, tokens) as written. Don't commit real secrets until
-> environments with encrypted secret variables arrive (Phase 4); until then, prefer dev-only credentials.
+> Saved requests store auth values (passwords, tokens) as written. Use secret variables instead, for example
+> a Bearer token of `{{token}}` with `token` marked secret in an environment, so nothing sensitive is committed.
 
 ### Browser version
 

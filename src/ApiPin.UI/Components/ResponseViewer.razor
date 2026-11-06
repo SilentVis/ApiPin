@@ -36,6 +36,10 @@
     else
     {
         EnsureBody(r);
+        @if (Tab.LastReport is { Unresolved.Count: > 0 } report)
+        {
+            <div class="banner warn response-warning">Sent with undefined variables: @string.Join(", ", report.Unresolved.Select(n => "{{" + n + "}}"))</div>
+        }
         <div class="status-bar">
             <span class="status-pill @Display.StatusClass(r.StatusCode)">@r.StatusCode @r.ReasonPhrase</span>
             <span class="metric" title="Total time">@Display.Duration(r.Timings.Total)</span>

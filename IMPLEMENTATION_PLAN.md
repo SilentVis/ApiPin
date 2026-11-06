@@ -303,13 +303,13 @@ Effort is in **focused dev-days** for one developer. Each phase ends with a usab
 
 ### Phase 4 — Environments and variables (≈ 5 days)
 
-- [ ] Environment files per §3.5; **environment picker** in the top bar; "No environment" option
-- [ ] Environment editor: grid with key, value, secret toggle, enabled; duplicate environment; globals editor
-- [ ] `SecretStore` using DPAPI; secret values never written to workspace files; "missing secret" indicator after cloning
-- [ ] Variable highlighting in the URL, headers and body editors: resolved = green with hover tooltip, unresolved = red
-- [ ] `{{` autocomplete listing the variables available in the current scope
-- [ ] "Resolved request preview" panel (final URL, headers, body after substitution; secrets masked)
-- [ ] Quick-look eye icon: shows all variables in effect and where each one comes from (env / collection / global)
+- [x] Environment files per §3.5; **environment picker** in the top bar; "No environment" option (the picked environment is kept per workspace in `.apipin/state.json`, which a generated `.gitignore` keeps out of Git)
+- [x] Environment editor: grid with key, value, secret toggle, enabled; duplicate environment; globals editor (globals live in `apipin.workspace.json`)
+- [x] `SecretStore` using DPAPI; secret values never written to workspace files; "missing secret" indicator after cloning (also for secret collection/folder variables and globals; keyed by a workspace id so copies don't mix)
+- [x] Variable highlighting in the URL, headers and body editors: resolved = green with hover tooltip, unresolved = red (also params and form fields; dynamic variables are blue)
+- [x] `{{` autocomplete listing the variables available in the current scope
+- [x] "Resolved request preview" panel (final URL, headers, body after substitution; secrets masked) (the request editor's **Resolved** tab, with undefined variables listed)
+- [x] Quick-look eye icon: shows all variables in effect and where each one comes from (env / collection / global) (overridden values are listed too)
 
 **Exit criteria:** switching `Local` ↔ `Staging` re-targets every request in a collection without edits, and no secret appears in `git diff`.
 

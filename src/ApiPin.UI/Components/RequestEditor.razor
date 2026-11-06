@@ -59,8 +59,8 @@
                 <option value="@CustomOption">Custom…</option>
             </select>
         }
-        <input class="url-input" value="@Request.Url" placeholder="https://localhost:5001/api/orders/:id?expand=items"
-               spellcheck="false" autocomplete="off" @oninput="OnUrlChanged" />
+        <VarInput HostClass="url-host" Class="url-input" Value="@Request.Url" Placeholder="{{baseUrl}}/api/orders/:id?expand=items"
+                  Variables="Vars" ValueChanged="OnUrlChanged" />
         @if (Tab.IsSending)
         {
             <button class="btn danger send-btn" @onclick="() => State.Cancel(Tab)">Cancel</button>
@@ -77,6 +77,7 @@
         @Section("auth", "Auth", EffectiveAuth.Auth is NoAuth ? 0 : 1, dot: true)
         @Section("body", "Body", Request.Body is NoBody ? 0 : 1, dot: true)
         @Section("settings", "Settings", Request.Settings.VerifyTls ? 0 : 1, dot: true)
+        @Section("resolved", "Resolved", 0)
     </nav>
 
     <div class="subtab-body">
@@ -84,12 +85,12 @@
         {
             case "params":
                 <h4 class="section-title">Query parameters</h4>
-                <KeyValueGrid Items="Request.QueryParams" OnChanged="OnQueryParamsChanged" />
+                <KeyValueGrid Items="Request.QueryParams" OnChanged="OnQueryParamsChanged" Variables="Vars" />
                 @if (Request.PathParams.Count > 0)
                 {
                     <h4 class="section-title">Path parameters</h4>
                     <KeyValueGrid Items="Request.PathParams" OnChanged="State.MarkDirty" AllowAdd="false" KeysReadOnly="true"
-                                  KeyHeader="Name" ValuePlaceholder="Value" />
+                                  KeyHeader="Name" ValuePlaceholder="Value" Variables="Vars" />
                 }
                 else
                 {
@@ -98,7 +99,7 @@
                 break;
 
             case "headers":
-                <KeyValueGrid Items="Request.Headers" OnChanged="State.MarkDirty" KeySuggestions="Display.CommonHeaders" KeyPlaceholder="Header" />
+                <KeyValueGrid Items="Request.Headers" OnChanged="State.MarkDirty" KeySuggestions="Display.CommonHeaders" KeyPlaceholder="Header" Variables="Vars" />
                 @if (Inherited.Count > 0)
                 {
                     <h4 class="section-title">Inherited</h4>
@@ -124,11 +125,15 @@
                 break;
 
             case "body":
-                <BodyEditor Tab="Tab" />
+                <BodyEditor Tab="Tab" Variables="Vars" />
                 break;
 
             case "settings":
                 <SettingsEditor Tab="Tab" />
+                break;
+
+            case "resolved":
+                <ResolvedPreview Tab="Tab" />
                 break;
         }
     </div>
@@ -204,9 +209,20 @@
         State.MarkDirty();
     }
 
-    private void OnUrlChanged(ChangeEventArgs e)
+    private ApiPin.Core.Variables.VariableContext Vars => _vars ??= State.VariablesFor(Tab);
+    private ApiPin.Core.Variables.VariableContext? _vars;
+
+    protected override void OnParametersSet() => _vars = null;
+
+    protected override bool ShouldRender()
     {
-        Request.Url = e.Value?.ToString() ?? "";
+        _vars = null; // variables may have changed (environment switched, settings saved)
+        return true;
+    }
+
+    private void OnUrlChanged(string url)
+    {
+        Request.Url = url;
         Request.QueryParams = UrlTools.SyncQueryParams(Request.Url, Request.QueryParams);
         Request.PathParams = UrlTools.SyncPathParams(Request.Url, Request.PathParams);
         State.MarkDirty();
